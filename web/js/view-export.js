@@ -1,9 +1,11 @@
 // view-export.js - profile code, JSON, firmware header and Raw Accel export.
 import { sanitizeConfig } from './omni-core.js';
 import {
-  encodeProfile, decodeProfile, profileJson, profileHeader, rawAccelSettings, headlineGains, headlineText,
+  encodeProfile, decodeProfile, profileJson, profileHeader, rawAccelSettings, rawAccelFit, rawAccelSummary,
+  headlineGains, headlineText,
 } from './export.js';
 import { profileFromFit } from './report.js';
+import { isDesktop } from './desktop.js';
 import { $, $$, h, toast, download, copyWithToast, fmt, dateStamp } from './ui.js';
 
 let ctx;
@@ -37,6 +39,7 @@ export function init(c) {
   const rerender = () => { if (ctx.route === 'export') render(); };
   ctx.on('fit', rerender);
   ctx.on('device', rerender);
+  ctx.on('desktop', rerender);
 }
 
 export function show() {
@@ -91,9 +94,13 @@ function render() {
   $('#exp-code').textContent = encodeProfile(cfg);
   $('#exp-header').textContent = profileHeader(cfg);
 
-  const right = rows[0].gain, up = rows[2].gain, left = rows[4].gain, down = rows[6].gain;
-  const diag = [1, 3, 5, 7].map((k) => rows[k]);
-  const note = `Raw Accel gets right ${right.toFixed(3)}x, up ${up.toFixed(3)}x, left ${left.toFixed(3)}x, down ${down.toFixed(3)}x (as an output DPI of ${Math.round(1000 * right)} with ratios). `
-    + `Your diagonals (${diag.map((r) => `${r.name.toLowerCase()} ${r.gain.toFixed(3)}x`).join(', ')}) are approximated by mixing their two axes.`;
-  $('#exp-rawaccel-note').textContent = note;
+  // The settings file holds the least-squares fit, not the raw axis values: show those and how close they get.
+  const fit = rawAccelFit(cfg);
+  const sum = rawAccelSummary(fit);
+  const fitLine = $('#exp-rawaccel-fit');
+  fitLine.className = `fit-quality fit-${sum.level}`;
+  fitLine.textContent = sum.text;
+  $('#exp-rawaccel-note').textContent = `The file sets right ${fit.right.toFixed(3)}x, left ${fit.left.toFixed(3)}x, up ${fit.up.toFixed(3)}x, down ${fit.down.toFixed(3)}x `
+    + `(an output DPI of ${Math.round(1000 * fit.right)} with ratios), the four values that best match your whole profile. Diagonals are a mix of their two axes.`;
+  $('#exp-rawaccel-app').hidden = !isDesktop() || ctx.desktop?.method !== 'rawaccel';
 }

@@ -157,6 +157,50 @@ function solve4(A0, b0) {
 }
 
 /**
+ * Gain Raw Accel applies to a hand movement at angleDeg (CCW, 0 = right) with
+ * the four factors of rawAccelFit(); also returns how far it bends the
+ * direction (degrees, + = counter-clockwise).
+ */
+export function rawAccelAt(fit, angleDeg) {
+  const t = (angleDeg * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  const gx = c >= 0 ? fit.right : fit.left, gy = s >= 0 ? fit.up : fit.down;
+  let bend = (Math.atan2(gy * s, gx * c) * 180) / Math.PI - angleDeg;
+  bend = ((((bend + 180) % 360) + 360) % 360) - 180;
+  return { gain: Math.hypot(gx * c, gy * s), bendDeg: Math.abs(bend) < 1e-9 ? 0 : bend };
+}
+
+/**
+ * The profile Raw Accel actually applies with these factors, as n gains at
+ * k * 360/n degrees (cubic interpolation, no rotation). Calibrating while it
+ * is on records this as the active profile.
+ */
+export function rawAccelEffectiveGains(fit, n = 16) {
+  return Array.from({ length: n }, (_, k) => rawAccelAt(fit, (k * 360) / n).gain);
+}
+
+/** The 8 headline directions: the profile, what Raw Accel does, the error and the bend. */
+export function rawAccelRows(cfgIn, fit = rawAccelFit(cfgIn)) {
+  return headlineGains(cfgIn).map((r) => {
+    const { gain, bendDeg } = rawAccelAt(fit, r.theta);
+    return { name: r.name, theta: r.theta, target: r.gain, gain, errorPct: 100 * (gain / r.gain - 1), bendDeg };
+  });
+}
+
+/** One plain-language verdict on a rawAccelFit(): { level: 'close'|'fair'|'rough', text }. */
+export function rawAccelSummary(fit) {
+  const err = fit.maxErrorPct, bend = fit.maxSkewDeg;
+  const level = err <= 1.5 && bend <= 3 ? 'close' : err <= 4 && bend <= 8 ? 'fair' : 'rough';
+  const facts = `In every direction Raw Accel comes within ${err.toFixed(1)}% of your profile (${fit.rmsErrorPct.toFixed(1)}% typical), and a flick between two axes bends by at most ${bend.toFixed(1)}°.`;
+  const meaning = {
+    close: 'That is close to the full profile.',
+    fair: 'Close along the axes; diagonal flicks get a blend of their two axes, so they are only roughly right.',
+    rough: 'Your profile changes a lot between the axes and the diagonals, which Raw Accel cannot express. The USB adapter (or the omnisens app on Linux) applies it fully.',
+  }[level];
+  return { level, text: `${facts} ${meaning}` };
+}
+
+/**
  * Raw Accel (Windows, no hardware) settings.json for a fresh install, using
  * rawAccelFit(). Format from RawAccelOfficial/rawaccel v1.7.1
  * (wrapper/wrapper.cpp, common/rawaccel-base.hpp).

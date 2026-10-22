@@ -5,6 +5,7 @@ import { makeSession } from './report.js';
 import { configGains, FLAG_LINEAR } from './omni-core.js';
 import { webHidSupported } from './device.js';
 import { pointerLockSupported } from './capture.js';
+import { isDesktop, desktopApi, desktopCorrection } from './desktop.js';
 import { $, $$, h, toast, attempt, readFile, fmt } from './ui.js';
 
 let ctx;
@@ -49,11 +50,13 @@ export function init(c) {
     start();
   });
   ctx.on('device', () => { if (ctx.route === 'calibrate') renderAdapter(); });
+  ctx.on('desktop', () => { if (ctx.route === 'calibrate') renderAdapter(); });
 }
 
 export function show() {
   fillForm();
   renderAdapter();
+  if (isDesktop()) ctx.refreshDesktop().catch(() => {});
 }
 
 export async function loadFile(input) {
@@ -104,37 +107,65 @@ function updateDerived() {
   }
 }
 
+function modeOption(value, title, text) {
+  return h('label', { class: 'seg-opt' },
+    h('input', { type: 'radio', name: 'adapter-mode', value, checked: ctx.settings.adapterMode === value, onchange: () => { ctx.settings.adapterMode = value; ctx.saveSettings(); } }),
+    h('span', {}, h('b', {}, title), h('small', {}, text)));
+}
+
 function renderAdapter() {
-  const box = $('#cal-adapter');
+  // Only where the app can apply a profile (Windows, Linux) is there a correction on this PC to think about.
+  const app = isDesktop() && ['rawaccel', 'engine'].includes(ctx.desktop?.method);
+  $('#cal-adapter-legend').textContent = app ? 'Adapter and this PC' : 'Adapter';
+  $('#cal-adapter').replaceChildren(...adapterParts(app), ...(app ? pcParts() : []));
+}
+
+function adapterParts(app) {
   const rawNote = 'If an omnisens adapter is plugged in, connect it here or disable it (hold Left + Right + Middle for 3 s; the LED flashes three times, then turns off, or dim red on RGB boards; boards without an LED give no sign) so the measurement sees your raw hand movement.';
   if (!webHidSupported()) {
-    box.replaceChildren(
-      h('p', {}, 'No adapter needed to find your values: you can copy them or export them to Raw Accel afterwards.'),
+    return [
+      h('p', {}, `No adapter needed to find your values: you can copy them or ${app ? 'apply them on this PC' : 'export them to Raw Accel'} afterwards.`),
       h('p', { class: 'muted small' }, `This browser cannot talk to the adapter (WebHID needs desktop Chrome, Edge or Opera). ${rawNote}`),
-    );
-    return;
+    ];
   }
   if (!ctx.dev) {
-    box.replaceChildren(
-      h('p', {}, 'No adapter connected. That is fine: you can still find your values and export them.'),
+    return [
+      h('p', {}, `No adapter connected. That is fine: you can still find your values and ${app ? 'apply them on this PC' : 'export them'}.`),
       h('p', { class: 'muted small' }, rawNote),
       h('button', { class: 'btn', type: 'button', onclick: () => attempt('Connecting', () => ctx.connect()) }, 'Connect adapter'),
-    );
-    return;
+    ];
   }
   const st = ctx.devStatus;
   const cfg = ctx.devConfig;
   const flat = cfg ? configGains(cfg).every((g) => Math.abs(g - 1) < 1e-3) : true;
-  const opt = (value, title, text) => h('label', { class: 'seg-opt' },
-    h('input', { type: 'radio', name: 'adapter-mode', value, checked: ctx.settings.adapterMode === value, onchange: () => { ctx.settings.adapterMode = value; ctx.saveSettings(); } }),
-    h('span', {}, h('b', {}, title), h('small', {}, text)));
-  box.replaceChildren(
+  return [
     h('p', {}, `Adapter connected${st ? ` (firmware ${st.firmware}, correction ${st.enabled ? 'on' : 'off'})` : ''}${cfg?.label ? `, profile "${cfg.label}"` : ''}.`),
     h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Calibration mode' },
-      opt('fresh', 'Fresh calibration', 'Bypass the adapter while measuring; build a new profile from your raw hand movement.'),
-      opt('refine', 'Refine current profile', flat ? 'Your adapter profile is flat, so this is the same as fresh.' : 'Keep the current profile on and correct what is left over.')),
+      modeOption('fresh', 'Fresh calibration', 'Bypass the adapter while measuring; build a new profile from your raw hand movement.'),
+      modeOption('refine', 'Refine current profile', flat ? 'Your adapter profile is flat, so this is the same as fresh.' : 'Keep the current profile on and correct what is left over.')),
     h('p', { class: 'muted small' }, 'The adapter is put back the way it was when the session ends or pauses. If you close the page mid-session, unplug and replug the adapter to restore it.'),
-  );
+  ];
+}
+
+/** The omnisens app's correction on this PC (Raw Accel or the Linux engine), if one is applied. */
+function pcParts() {
+  const pc = desktopCorrection(ctx.desktop);
+  if (!pc) {
+    return [h('p', { class: 'muted small' }, 'No omnisens profile is applied on this PC, so the measurement sees your raw hand movement.')];
+  }
+  const how = pc.kind === 'rawaccel' ? 'through Raw Accel' : 'by the omnisens app';
+  if (ctx.dev) {
+    return [h('p', {}, `An omnisens profile is also applied on this PC ${how}. It is turned off while you measure and back on afterwards, so only the adapter's profile counts.`)];
+  }
+  return [
+    h('p', {}, `An omnisens profile is applied on this PC ${how}${pc.paused ? ' (paused right now)' : ''}.`),
+    h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Calibration mode' },
+      modeOption('fresh', 'Fresh calibration', 'Turn the correction off while measuring; build a new profile from your raw hand movement.'),
+      modeOption('refine', 'Refine current profile', pc.kind === 'rawaccel'
+        ? 'Keep it on and correct what is left over, including what Raw Accel\'s four-direction approximation misses.'
+        : 'Keep it on and correct what is left over.')),
+    h('p', { class: 'muted small' }, 'The correction is put back when the session ends or pauses. If this page closes mid-session, press Resume correction on This PC.'),
+  ];
 }
 
 // ------------------------------------------------------------------ session
@@ -165,29 +196,66 @@ function start() {
   let prevEnabled = null;
   let sessionEnabled = null;
   const setEnabled = (on) => (ctx.dev && on !== null ? ctx.withDevice((d) => d.setEnabled(on)) : null);
-  const restore = () => setEnabled(prevEnabled) || Promise.resolve();
-  const enter = () => setEnabled(sessionEnabled);
+
+  // The omnisens app's correction on this PC: paused while measuring (fresh, or
+  // always when an adapter is in use, so the two never stack) or kept on (refine).
+  let pc = null;
+  let pcMode = null;        // 'fresh' | 'refine'
+  let pcPaused = null;      // last state asked for
+  let pcQueue = Promise.resolve();
+  const pcSwitch = (paused) => {
+    if (!pc || pcPaused === paused) return null;
+    pcPaused = paused;
+    const run = pcQueue.then(() => desktopApi(paused ? '/api/pause' : '/api/resume', {}, { keepalive: true }));
+    // A failed switch leaves the state unknown, so the next round asks again instead of
+    // recording with the correction still on.
+    pcQueue = run.catch(() => { if (pcPaused === paused) pcPaused = null; });
+    return run;
+  };
+  // null when there is nothing to do, so the task can start inside the click (pointer lock).
+  const both = (a, b) => (a || b ? Promise.all([a, b]) : null);
+  const restore = () => both(setEnabled(prevEnabled), pcMode === 'fresh' ? pcSwitch(false) : null) || Promise.resolve();
+  const enter = () => both(setEnabled(sessionEnabled), pcMode ? pcSwitch(pcMode === 'fresh') : null);
 
   const setup = (async () => {
-    if (!dev) return;
-    session.adapter = s.adapterMode;
-    await ctx.refreshDevice();
-    prevEnabled = ctx.devStatus.enabled;
-    if (s.adapterMode === 'refine') {
-      const cfg = ctx.devConfig;
-      session.current = { gains: configGains(cfg), linear: !!(cfg.flags & FLAG_LINEAR), rotationCdeg: cfg.rotationCdeg };
-      sessionEnabled = true;
-    } else {
-      sessionEnabled = false;
+    if (isDesktop()) {
+      try {
+        await ctx.refreshDesktop().catch(() => {});
+        pc = desktopCorrection(ctx.desktop);
+        if (pc) {
+          pcPaused = pc.paused;
+          pcMode = dev ? 'fresh' : s.adapterMode;
+          session.desktop = pcMode;
+          if (pcMode === 'refine') session.current = pc.current;
+          ctx.adapterGuard = { restore };
+          await pcSwitch(pcMode === 'fresh');
+        }
+      } catch (e) {
+        // The session stays as planned: starting a round retries the switch and only begins once it worked.
+        toast(`Could not switch the correction on this PC: ${e.message}`, 'error');
+      }
     }
-    ctx.adapterGuard = { restore };
-    await enter();
-  })().catch((e) => {
-    session.adapter = 'error';
-    session.current = null;
-    sessionEnabled = null;
-    toast(`Could not switch the adapter: ${e.message}. Disable it with the button chord (Left + Right + Middle for 3 s) before you start.`, 'error');
-  });
+    if (!dev) return;
+    try {
+      session.adapter = s.adapterMode;
+      await ctx.refreshDevice();
+      prevEnabled = ctx.devStatus.enabled;
+      if (s.adapterMode === 'refine') {
+        const cfg = ctx.devConfig;
+        session.current = { gains: configGains(cfg), linear: !!(cfg.flags & FLAG_LINEAR), rotationCdeg: cfg.rotationCdeg };
+        sessionEnabled = true;
+      } else {
+        sessionEnabled = false;
+      }
+      ctx.adapterGuard = { restore };
+      await setEnabled(sessionEnabled);
+    } catch (e) {
+      session.adapter = 'error';
+      session.current = null;
+      sessionEnabled = null;
+      toast(`Could not switch the adapter: ${e.message}. Disable it with the button chord (Left + Right + Middle for 3 s) before you start.`, 'error');
+    }
+  })();
 
   const stats = (task) => {
     const st = task.statsFor((t) => !t.warmup);
@@ -196,6 +264,9 @@ function start() {
   const adapterLine = !dev ? null : s.adapterMode === 'refine'
     ? 'Your current adapter profile stays on; the result refines it.'
     : 'The adapter is bypassed while you flick and restored afterwards.';
+  const pcLine = !(isDesktop() && desktopCorrection(ctx.desktop)) ? null : dev || s.adapterMode !== 'refine'
+    ? 'The omnisens correction on this PC is off while you flick and back on afterwards.'
+    : 'The omnisens correction on this PC stays on; the result refines it.';
 
   ctx.task.open({
     rounds: plan,
@@ -216,6 +287,7 @@ function start() {
           h('li', {}, 'Flick to each teal target in one fast motion, correct, click.'),
           h('li', {}, 'Then flick back to the centre. Repeat. Esc pauses.')),
         adapterLine,
+        pcLine,
       ],
       button: 'Click to start',
       busy: setup,
@@ -252,7 +324,7 @@ async function finish(task, session, restore, complete) {
   try {
     await restore();
   } catch (e) {
-    toast(`Could not restore the adapter state: ${e.message}`, 'error');
+    toast(`Could not put the correction back (adapter or this PC): ${e.message}`, 'error');
   }
   ctx.adapterGuard = null;
   const measured = session.trials.filter((t) => !t.warmup && t.kind === 'out').length;

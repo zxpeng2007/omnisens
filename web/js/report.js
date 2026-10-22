@@ -48,6 +48,7 @@ export function makeSession({ settings, degPerCount, cm360, adapter = 'none', cu
     hFov: settings.hFov,
     dpi: settings.dpi,
     adapter,              // 'none' | 'fresh' | 'refine'
+    desktop: null,        // the omnisens app's correction on this PC: null | 'fresh' (paused) | 'refine' (kept on)
     current,              // profile active while recording (refine), else null
     inputMode: null,      // 'raw' | 'accel' | 'mixed', filled in by the task
     seed,

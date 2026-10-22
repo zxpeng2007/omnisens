@@ -13,11 +13,13 @@ Bug reports, mouse compatibility reports and pull requests are welcome.
   ```bash
   make -C firmware/test run
   node --test "web/test/*.test.mjs"
+  (cd desktop && go generate ./... && go test ./...)
   ```
 
-  If you change `firmware/src/omni_core.c` or `web/js/omni-core.js`, change
-  both and regenerate the shared vectors with
-  `node web/test/gen-vectors.mjs > firmware/test/vectors.inc`. Protocol
+  If you change `firmware/src/omni_core.c`, `web/js/omni-core.js` or
+  `desktop/internal/omnicore`, change all three and regenerate the shared
+  vectors with `node web/test/gen-vectors.mjs > firmware/test/vectors.inc`
+  and `node web/test/gen-vectors.mjs --json > desktop/internal/omnicore/testdata/vectors.json`. Protocol
   changes must update `docs/PROTOCOL.md`, `firmware/src/vendor.c` and
   `web/js/device.js` together.
 

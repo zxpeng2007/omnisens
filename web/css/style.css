@@ -406,6 +406,49 @@ pre.code {
 .block-order li.on { color: var(--accent-strong); }
 .block-order li.off { color: var(--muted); }
 
+/* ------------------------------------------------------------ this pc */
+
+.ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 26px; }
+.way h3 { margin-top: 0.4em; }
+.os-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 18px; align-items: start; }
+.os-grid ul { padding-left: 20px; margin: 0; }
+.os-grid li { margin-bottom: 8px; color: #cfd9e4; }
+
+.checklist { list-style: none; padding: 0; margin: 14px 0; display: flex; flex-direction: column; gap: 10px; }
+.checklist li { display: flex; gap: 12px; align-items: flex-start; }
+.checklist b { display: block; }
+.checklist small { display: block; color: var(--muted); word-break: break-word; }
+.check-mark {
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 700; font-size: 0.9rem;
+  color: var(--muted); border: 2px solid var(--border-strong);
+}
+.checklist li[data-state="done"] .check-mark { color: var(--accent-ink); background: var(--ok); border-color: var(--ok); }
+.checklist li[data-state="current"] .check-mark { color: var(--accent); border-color: var(--accent); }
+.checklist li[data-state="todo"] b { color: var(--muted); }
+
+.fit-quality { border-left: 3px solid var(--border-strong); padding: 4px 0 4px 10px; margin: 10px 0; }
+.fit-quality:empty { display: none; }
+.fit-close { border-left-color: var(--ok); }
+.fit-fair { border-left-color: var(--warn); }
+.fit-rough { border-left-color: var(--danger); }
+
+.cmd { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cmd pre.code { flex: 1 1 260px; margin: 0; }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+code.hash { word-break: break-all; }
+.pc-autostart { margin-top: 16px; }
+/* The app's messages carry long Windows paths (settings.json, state.json) that must wrap at 375 px. */
+#view-pc p, .warn-line, .toast { overflow-wrap: anywhere; }
+
+.dialog {
+  width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 18px;
+  padding: 22px 24px; box-shadow: var(--shadow);
+}
+.dialog::backdrop { background: rgba(5, 8, 12, 0.72); }
+.dialog .kv { grid-template-columns: max-content minmax(0, 1fr); }
+
 /* ------------------------------------------------------------ toasts */
 
 .toasts {

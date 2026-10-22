@@ -69,11 +69,44 @@ right after D+.
 | `src/storage.c` | flash read/write (the image runs from RAM, so writes never stall the host) |
 | `src/led.c` | status LED / WS2812 |
 
+## Desktop app
+
+Requirements: Go 1.22 or newer. No third-party Go modules.
+
+```bash
+cd desktop
+go generate ./...          # copies web/ into internal/webui/dist for embedding
+go test ./...
+GOOS=windows GOARCH=amd64 go build -o omnisens.exe ./cmd/omnisens
+GOOS=linux GOARCH=amd64 go build -o omnisens ./cmd/omnisens
+```
+
+| Package | Role |
+|---|---|
+| `internal/omnicore` | Go port of the profile format, engine and Raw Accel fit (checked against `testdata/vectors.json` from `web/test/gen-vectors.mjs --json`) |
+| `internal/server` | local HTTP server: embedded tool, token and Host checks, the JSON API |
+| `internal/rawaccel` | Raw Accel settings merge, pinned download and install, driver checks (Windows) |
+| `internal/linuxengine` | evdev to uinput engine and permission setup (Linux) |
+| `internal/state` | state and single-instance files |
+| `cmd/omnisens` | command line and platform wiring |
+
+The Linux engine has an integration test that creates virtual mice and needs
+root and `/dev/uinput`:
+
+```bash
+sudo -E env "PATH=$PATH" go test -tags integration ./internal/linuxengine/
+```
+
+For manual testing of the Windows app without Raw Accel's driver, set
+`OMNISENS_DEV_ASSUME_RAWACCEL_DRIVER=running` and point it at a folder
+holding a stand-in `writer.exe` (see `internal/rawaccel/testdata/fakewriter`).
+
 ## Tests
 
 ```bash
 make -C firmware/test run          # C unit tests with ASan + UBSan (host gcc/clang)
-node --test "web/test/*.test.mjs"   # calibration maths, exports, schedule
+node --test "web/test/*.test.mjs"   # calibration maths, exports, schedule, app UI helpers
+(cd desktop && go generate ./... && go test ./...)   # desktop app
 ```
 
 `firmware/test/vectors.inc` is generated from the JavaScript engine

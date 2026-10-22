@@ -4,16 +4,19 @@ import { OmniDevice, webHidSupported } from './device.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { analysedTrials, analyzeTrials, fitResults, parseSession } from './report.js';
 import { TaskScreen } from './task-screen.js';
+import { captureToken, detectDesktop, isDesktop, desktopApi } from './desktop.js';
 import { $, $$, toast } from './ui.js';
 import * as calibrateView from './view-calibrate.js';
 import * as resultsView from './view-results.js';
 import * as deviceView from './view-device.js';
 import * as exportView from './view-export.js';
 import * as verifyView from './view-verify.js';
+import * as pcView from './view-pc.js';
 
 const VIEWS = {
   calibrate: { mod: calibrateView, title: 'Calibrate' },
   results: { mod: resultsView, title: 'Results' },
+  pc: { mod: pcView, title: 'This PC' },
   device: { mod: deviceView, title: 'Adapter' },
   export: { mod: exportView, title: 'Export' },
   verify: { mod: verifyView, title: 'Verify' },
@@ -39,6 +42,9 @@ export const ctx = {
   force: false,         // "Apply anyway" for the current session
   adapterGuard: null,   // { restore(): Promise } while a session changes the adapter state
   task: null,           // TaskScreen
+  desktop: null,        // GET /api/info while the omnisens app serves this page, else null
+  desktopError: null,   // why the last /api/info failed (the app was closed?)
+  pcPick: null,         // profile source to preselect on This PC ('result')
 
   on(type, fn) { bus.addEventListener(type, fn); },
   emit(type) { bus.dispatchEvent(new Event(type)); },
@@ -104,6 +110,26 @@ export const ctx = {
       seed: (this.session.seed >>> 0) || 12345,
     }, this.session.current || null);
     this.emit('fit');
+  },
+
+  /** Re-reads the app's state; emits 'desktop' when it changed. No-op on the website. */
+  async refreshDesktop() {
+    if (!isDesktop()) return null;
+    let info;
+    try {
+      info = await desktopApi('/api/info');
+    } catch (e) {
+      if (this.desktopError !== e.message) {
+        this.desktopError = e.message;
+        this.emit('desktop');
+      }
+      throw e;
+    }
+    const changed = this.desktopError !== null || JSON.stringify(info) !== JSON.stringify(this.desktop);
+    this.desktop = info;
+    this.desktopError = null;
+    if (changed) this.emit('desktop');
+    return info;
   },
 
   async loadSessionText(text) {
@@ -187,6 +213,8 @@ function renderPill() {
 // ------------------------------------------------------------------ boot
 
 function boot() {
+  // First, so the token leaves the address bar before anything else runs.
+  captureToken();
   ctx.task = new TaskScreen();
   for (const { mod } of Object.values(VIEWS)) mod?.init?.(ctx);
   ctx.on('device', renderPill);
@@ -217,6 +245,11 @@ function boot() {
     });
     OmniDevice.reconnect().then((dev) => dev && attachDevice(dev)).catch(() => {});
   }
+
+  detectDesktop().then(async (ok) => {
+    if (ok) await ctx.refreshDesktop().catch(() => {});
+    ctx.emit('desktop');
+  });
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

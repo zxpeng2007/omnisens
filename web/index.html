@@ -22,6 +22,7 @@
     <nav class="mainnav" aria-label="Main">
       <a href="#/calibrate" data-route="calibrate">Calibrate</a>
       <a href="#/results" data-route="results">Results</a>
+      <a href="#/pc" data-route="pc">This PC</a>
       <a href="#/device" data-route="device">Adapter</a>
       <a href="#/export" data-route="export">Export</a>
       <a href="#/verify" data-route="verify">Verify</a>
@@ -79,7 +80,7 @@
         </fieldset>
 
         <fieldset class="block">
-          <legend><span class="legend-n">3</span>Adapter</legend>
+          <legend><span class="legend-n">3</span><span id="cal-adapter-legend">Adapter</span></legend>
           <div id="cal-adapter"></div>
         </fieldset>
 
@@ -177,6 +178,7 @@
           <h2 id="act-h">Use it</h2>
           <div class="btn-row wrap">
             <button class="btn primary" type="button" id="act-send">Send to adapter</button>
+            <button class="btn primary" type="button" id="act-pc" hidden>Apply on this PC</button>
             <button class="btn" type="button" id="act-save" hidden>Save to adapter flash</button>
             <button class="btn" type="button" id="act-json">Download JSON</button>
             <button class="btn" type="button" id="act-rawaccel">Export for Raw Accel</button>
@@ -195,6 +197,152 @@
           <p><a href="https://github.com/zxpeng2007/omnisens/blob/main/docs/ALGORITHM.md" target="_blank" rel="noopener">How the measurement and fit work (ALGORITHM.md)</a></p>
         </div>
       </div>
+    </section>
+
+    <!-- ============================================================ this pc -->
+    <section class="view" id="view-pc" data-view="pc" aria-labelledby="pc-h" hidden>
+      <div class="page-head">
+        <h1 id="pc-h" tabindex="-1">This PC</h1>
+        <p class="muted" id="pc-lead">Use your profile without the adapter: the omnisens app applies it to the computer it runs on.</p>
+      </div>
+
+      <p class="card" id="pc-checking" hidden>Connecting to the omnisens app...</p>
+      <div class="card notice" id="pc-offline" hidden>
+        <h2>The omnisens app is not answering</h2>
+        <p id="pc-offline-text">This page was opened by the omnisens app, but the app does not respond. If you closed its window, start omnisens again: it opens a fresh page.</p>
+      </div>
+
+      <!-- Website: what the app is and what it can do on each system. -->
+      <div id="pc-web">
+        <div class="card">
+          <h2>Two ways to use your profile</h2>
+          <div class="ways">
+            <div class="way">
+              <h3>The omnisens app (no hardware)</h3>
+              <p>A small program for Windows and Linux. It runs this tool on your PC (works offline) and applies your profile to that PC. Download it, run it, and this page opens from the app.</p>
+              <div class="btn-row wrap">
+                <a class="btn primary" href="https://github.com/zxpeng2007/omnisens/releases" target="_blank" rel="noopener">Download the app</a>
+                <a class="btn ghost" href="https://github.com/zxpeng2007/omnisens/blob/main/docs/DESKTOP.md" target="_blank" rel="noopener">How it works</a>
+              </div>
+              <p class="muted small">Windows may warn that the app is unrecognised because it is not code-signed (More info, then Run anyway). Its source and builds are public on GitHub.</p>
+            </div>
+            <div class="way">
+              <h3>The USB adapter</h3>
+              <p>A small board between your mouse and PC applies the full profile in hardware: exact, any operating system, no software running. See the <a href="#/device">Adapter</a> page.</p>
+            </div>
+          </div>
+        </div>
+        <div class="os-grid">
+          <div class="card">
+            <h2>Windows</h2>
+            <ul>
+              <li>Applies your profile through <a href="https://github.com/RawAccelOfficial/rawaccel" target="_blank" rel="noopener">Raw Accel</a>, a free, signed mouse driver. The app downloads the official release and checks it before running anything.</li>
+              <li>Raw Accel scales right, left, up and down separately, so the app fits those four values to your profile. Diagonals become a blend of their two axes. You see how close that is before applying (usually within 1-2%).</li>
+              <li>One-time setup: install Raw Accel's driver (a Windows administrator prompt) and restart.</li>
+              <li>Anti-cheat: Raw Accel's FAQ says the driver is signed and delays setting changes by a second so it cannot be used to cheat, and reports it working in FACEIT and Valorant matches. It also says nobody can guarantee what anti-cheat makers decide. Check the rules of your game and league.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h2>Linux</h2>
+            <ul>
+              <li>Applies the full profile (8 to 16 directions, the same maths as the adapter), nothing approximated.</li>
+              <li>The app reads your mouse and sends the corrected movement through a virtual mouse while it runs. Close it and your mouse is back to normal.</li>
+              <li>One-time setup: one sudo command that lets your user read mice and create the virtual mouse, then log out and back in.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h2>macOS</h2>
+            <ul>
+              <li>Not supported: the app cannot apply a profile on macOS.</li>
+              <li>Calibrate here, then use the USB adapter, or keep the values for later.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Served by the app. -->
+      <div id="pc-desk" hidden>
+        <div class="card notice" id="pc-none" hidden>
+          <h2>Applying is not supported here</h2>
+          <p id="pc-none-text"></p>
+        </div>
+
+        <div class="card" id="pc-setup" aria-labelledby="pc-setup-h">
+          <div class="card-head">
+            <h2 id="pc-setup-h">Set up</h2>
+            <button class="btn small ghost" type="button" id="pc-refresh">Check again</button>
+          </div>
+          <div id="pc-setup-body"></div>
+          <div id="pc-ra-controls" hidden>
+            <div class="btn-row wrap">
+              <button class="btn primary" type="button" id="pc-install">Install Raw Accel</button>
+              <button class="btn" type="button" id="pc-dir-toggle" aria-expanded="false" aria-controls="pc-dir-form">Use an existing Raw Accel folder</button>
+            </div>
+            <form id="pc-dir-form" class="import" novalidate hidden>
+              <label class="field"><span>Raw Accel folder (the one with writer.exe and rawaccel.exe)</span><input type="text" id="pc-dir" autocomplete="off" spellcheck="false" placeholder="C:\Tools\RawAccel"></label>
+              <button class="btn" type="submit" id="pc-dir-go">Use this folder</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="card" id="pc-profile" aria-labelledby="pc-src-h">
+          <h2 id="pc-src-h">Profile to apply</h2>
+          <div class="seg" role="radiogroup" aria-labelledby="pc-src-h">
+            <label class="seg-opt"><input type="radio" name="pc-src" value="result"><span><b>Latest calibration</b><small id="pc-src-result">none yet</small></span></label>
+            <label class="seg-opt"><input type="radio" name="pc-src" value="device"><span><b>Adapter</b><small id="pc-src-device">not connected</small></span></label>
+            <label class="seg-opt"><input type="radio" name="pc-src" value="paste"><span><b>Paste a code</b><small>omni1... or JSON</small></span></label>
+          </div>
+          <div id="pc-paste" class="import" hidden>
+            <label class="field"><span>Profile code or JSON</span><textarea id="pc-paste-text" rows="3" spellcheck="false"></textarea></label>
+            <button class="btn" type="button" id="pc-paste-go">Load</button>
+          </div>
+          <p class="muted" id="pc-empty">Choose a profile. No calibration yet? <a href="#/calibrate">Run one</a> or paste a profile code.</p>
+          <div id="pc-preview"></div>
+          <div class="btn-row wrap">
+            <button class="btn primary" type="button" id="pc-apply">Apply profile</button>
+          </div>
+          <p class="muted small" id="pc-apply-hint" aria-live="polite"></p>
+        </div>
+
+        <div class="card" id="pc-now" aria-labelledby="pc-now-h">
+          <h2 id="pc-now-h">On this PC now</h2>
+          <div id="pc-now-body"></div>
+          <div class="btn-row wrap">
+            <button class="btn" type="button" id="pc-resume" hidden>Resume correction</button>
+            <button class="btn" type="button" id="pc-remove">Remove</button>
+          </div>
+          <label class="switch pc-autostart">
+            <input type="checkbox" id="pc-autostart">
+            <span><b>Apply at every login</b><small id="pc-autostart-text"></small></span>
+          </label>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>The omnisens app</h2>
+            <button class="btn small ghost" type="button" id="pc-quit">Quit omnisens</button>
+          </div>
+          <p class="muted small" id="pc-app-info"></p>
+        </div>
+      </div>
+
+      <dialog class="dialog" id="pc-install-dialog" aria-labelledby="pc-install-h">
+        <form method="dialog">
+          <h2 id="pc-install-h">Install Raw Accel</h2>
+          <p>omnisens downloads the official Raw Accel <span id="pc-dl-version"></span> release from GitHub:</p>
+          <pre class="code" id="pc-dl-url"></pre>
+          <dl class="kv">
+            <dt>Size</dt><dd id="pc-dl-size"></dd>
+            <dt>SHA-256</dt><dd><code class="hash" id="pc-dl-sha"></code></dd>
+          </dl>
+          <p>It checks the size and SHA-256 before running anything, then opens Raw Accel's installer. Windows asks for administrator permission: approve it, and press a key in the installer's window when it says so.</p>
+          <p><b>Restart your PC afterwards</b>, then start omnisens again and apply your profile.</p>
+          <div class="btn-row wrap">
+            <button class="btn primary" type="submit" value="install">Download and install</button>
+            <button class="btn ghost" type="submit" value="cancel">Cancel</button>
+          </div>
+        </form>
+      </dialog>
     </section>
 
     <!-- ============================================================ device -->
@@ -328,7 +476,9 @@
             <li>Open Raw Accel and press <b>Apply</b> (or run <code>writer.exe settings.json</code>).</li>
           </ol>
           <div class="btn-row"><button class="btn primary" type="button" id="exp-rawaccel">Download Raw Accel settings.json</button></div>
+          <p class="fit-quality" id="exp-rawaccel-fit"></p>
           <p class="muted small" id="exp-rawaccel-note"></p>
+          <p class="small" id="exp-rawaccel-app" hidden>You are using the omnisens app: <a href="#/pc">This PC</a> applies the profile for you and keeps your other Raw Accel settings.</p>
         </div>
       </div>
     </section>
@@ -356,7 +506,7 @@
         <ul>
           <li><b>This page</b> runs the calibration (a SpiderShot-style flick task), fits the profile and shows you every number.</li>
           <li><b>A small USB adapter</b> (Raspberry Pi Pico or similar, about the price of a mousepad) sits between mouse and PC and scales each movement by the gain for its direction. No drivers, no software running in the background, works in every game.</li>
-          <li><b>No adapter?</b> Export the values to Raw Accel on Windows for an axis-based approximation, or just keep the numbers.</li>
+          <li><b>No adapter?</b> The omnisens app applies your profile on Windows (through Raw Accel, an axis-based approximation) or Linux (the full profile); see <a href="#/pc">This PC</a>. Or export the values, or just keep the numbers.</li>
         </ul>
         <p>One reviewer put PureVector as <q>like having a separate X and Y sensitivity but for more directions</q> (<a href="https://www.youtube.com/shorts/6OZWJPcAX6A" target="_blank" rel="noopener">DiamondLobby Reviews</a>). The same video asks whether a profile calibrated on flicks hurts tracking. omnisens answers that with a tracking-safe symmetric mode, partial correction, a statistical evidence gate, and the blind A/B test.</p>
       </div>

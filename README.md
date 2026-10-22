@@ -2,22 +2,24 @@
 
 **Per-direction mouse sensitivity for any mouse.** An open-source take on the
 directional sensitivity behind Corsair's *PureVector*: measure how much you
-over- or under-shoot when you flick in each direction, then let a tiny USB
-adapter correct it in hardware, in every game, with nothing running on your PC.
+over- or under-shoot when you flick in each direction, then correct it in
+every game, either with the **omnisens app** (download and run, no extra
+hardware) or with a **tiny USB adapter** (full fidelity, nothing running on
+your PC).
 
 [![CI](https://github.com/zxpeng2007/omnisens/actions/workflows/ci.yml/badge.svg)](https://github.com/zxpeng2007/omnisens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Calibration tool:** https://zxpeng2007.github.io/omnisens/ &nbsp;·&nbsp;
-**Firmware:** [how to get it](#quick-start) &nbsp;·&nbsp;
-**Hardware:** [docs/HARDWARE.md](docs/HARDWARE.md)
+**Download the app:** [releases](https://github.com/zxpeng2007/omnisens/releases) ([guide](docs/DESKTOP.md)) &nbsp;·&nbsp;
+**Calibration tool online:** https://zxpeng2007.github.io/omnisens/ &nbsp;·&nbsp;
+**Adapter hardware:** [docs/HARDWARE.md](docs/HARDWARE.md)
 
-> **Status: early, not yet tested on real hardware.** The firmware builds in
-> CI and its core logic (direction engine, HID descriptor parser, flash
-> storage) is unit-tested, and the calibration maths is tested against
-> simulated players, but nobody has run the adapter with a real mouse yet.
-> Expect rough edges and please report what works and what does not (see
-> [CONTRIBUTING.md](CONTRIBUTING.md)).
+> **Status: early.** Everything builds in CI and the core logic (direction
+> engine, HID descriptor parser, flash storage, Raw Accel settings merge,
+> Linux input engine) is unit-tested, and the calibration maths is tested
+> against simulated players. Nobody has used it with a real mouse in a real
+> game yet. Expect rough edges and please report what works and what does
+> not (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ---
 
@@ -31,30 +33,50 @@ a per-direction sensitivity profile to the mouse's firmware. As
 it is like having separate X and Y sensitivities, but for more directions.
 
 That only works on one mouse line. omnisens does the same job for **any**
-USB mouse, wired or wireless:
+mouse:
 
 ```
- ┌──────────────┐  flick test in the   ┌────────────────────┐
- │ web tool     │  browser, at your    │ 8 directional       │
- │ (this repo)  │─ game sensitivity ──▶│ values (and a 16-   │
- └──────────────┘                      │ point profile)      │
-                                       └─────────┬──────────┘
-                                                 │ WebHID
- mouse ──USB──▶ [ $4-18 RP2040/RP2350 adapter ] ─┴──USB──▶ PC
-                 applies the per-direction gain
-                 to every report, in hardware
+                 flick test at your game sensitivity
+ ┌──────────────────────┐                 ┌──────────────────────────┐
+ │ calibration tool      │ ─────────────▶ │ your 8 directional values │
+ │ (in the app or online)│                │ (16-point profile)        │
+ └──────────────────────┘                 └────────────┬─────────────┘
+                     ┌─────────────────────────────────┼──────────────────┐
+                     ▼                                 ▼                  ▼
+            Windows: omnisens app          Linux: omnisens app     USB adapter
+            via the signed Raw Accel       built-in engine         ($4-18 RP2040),
+            driver (4 directions,          (full profile)          any OS (full
+            diagonals approximated)                                profile)
 ```
 
-1. **The firmware** (`firmware/`, under 100 KB) runs on a Raspberry Pi Pico or
-   a ready-made USB host board. It sits between the mouse and the PC, scales
-   each motion report by a gain that depends on the direction you are moving,
-   and forwards it. Out of the box it is a transparent passthrough.
-2. **The calibration tool** (`web/`, runs in the browser, no install) is a
+1. **The calibration tool** (`web/`, in the app or in any browser) is a
    SpiderShot-style flick test at your real game sensitivity. It measures the
    first ballistic movement of every flick, fits your directional bias, and
-   gives you the values. With an adapter connected it writes them to it.
+   gives you the values.
+2. **The omnisens app** (`desktop/`, one small download) runs the tool
+   offline and applies your profile to the PC: on Windows through the free,
+   signed [Raw Accel](https://github.com/RawAccelOfficial/rawaccel) driver,
+   on Linux with a built-in input engine. See [docs/DESKTOP.md](docs/DESKTOP.md).
+3. **The adapter firmware** (`firmware/`, under 100 KB) runs on a Raspberry Pi
+   Pico or a ready-made USB host board between the mouse and the PC. It
+   applies the full profile in hardware on any OS, with nothing running on
+   the PC. Out of the box it is a transparent passthrough.
 
-## Quick start
+## Quick start: the app (no hardware)
+
+1. **Download** `omnisens-windows-x64.exe` (or the Linux build) from the
+   [releases page](https://github.com/zxpeng2007/omnisens/releases) and run
+   it. Your browser opens the omnisens tool.
+2. **One-time setup.** Windows: on *This PC*, press *Install Raw Accel*
+   (official release, hash-checked; approve the prompt), then restart.
+   Linux: `sudo ./omnisens-linux-x64 linux-setup --install`, then log out and
+   in.
+3. **Calibrate** for five to eight minutes, then press *Apply on this PC*.
+   On Windows, turn on *Apply at every login*.
+
+Details, limits and how to undo it: [docs/DESKTOP.md](docs/DESKTOP.md).
+
+## Quick start: the USB adapter
 
 1. **Get an adapter.** Easiest: an
    [Adafruit Feather RP2040 USB Host](https://www.adafruit.com/product/5723).
@@ -73,10 +95,9 @@ USB mouse, wired or wireless:
 5. **Apply.** Review your values, press *Send to adapter*, then *Save*. The
    profile lives on the adapter; nothing runs on your PC while you play.
 
-**No adapter?** The tool still finds your values. On Windows it can export
-them as a [Raw Accel](https://github.com/RawAccelOfficial/rawaccel) profile;
-Raw Accel can only scale right/left/up/down separately, so that version
-approximates the diagonals.
+**Only want the numbers?** The online tool finds your values without
+installing anything, and can export them as a profile code, JSON, or a Raw
+Accel `settings.json`.
 
 ## Your values
 
@@ -116,9 +137,8 @@ default; the firmware's flat factory profile has 8).
   statistically clear *and* replicates across halves of your data. It applies
   70% of the measured correction by default, changes no direction by more
   than roughly ±15% per calibration, and never changes your average
-  sensitivity. A
-  *tracking-safe* mode only makes corrections that are equal in opposite
-  directions, so strafe tracking stays consistent.
+  sensitivity. A *tracking-safe* mode only makes corrections that are equal
+  in opposite directions, so strafe tracking stays consistent.
 * **Checking it.** *Refine* re-measures with the profile active.
   *Blind A/B* runs blocks with the correction on and off in a random,
   balanced order without telling you which is which, then shows whether your
@@ -130,16 +150,16 @@ Building: [docs/BUILDING.md](docs/BUILDING.md).
 
 ## omnisens vs. PureVector
 
-| | PureVector | omnisens |
-|---|---|---|
-| Mice | SABRE v3 PRO PureVector series | any USB mouse or receiver |
-| Where the profile lives | mouse firmware | adapter firmware |
-| Calibration | Aimlabs (Steam account) | browser, no account |
-| Directions | 8 (as shown in Corsair's graphs) | 8 values shown, up to 16 interpolated points |
-| Values visible and editable | shown as a graph; editing not documented | yes |
-| Polling rate | up to 8 kHz | up to 1 kHz through the adapter |
-| Cost | the mouse | about $4-18 for the adapter |
-| Algorithm | not published (Corsair describes it as patented) | open, documented, unit-tested (not yet validated with players) |
+| | PureVector | omnisens app (no hardware) | omnisens adapter |
+|---|---|---|---|
+| Mice | SABRE v3 PRO PureVector series | any mouse | any USB mouse or receiver |
+| Where the profile lives | mouse firmware | Raw Accel settings (Windows) / the running app (Linux) | adapter firmware |
+| Calibration | Aimlabs (Steam account) | in the app, no account | browser, no account |
+| Directions | 8 (as shown in Corsair's graphs) | Windows: 4, diagonals approximated; Linux: full profile | full profile (up to 16 interpolated points) |
+| Values visible and editable | shown as a graph; editing not documented | yes | yes |
+| Polling rate | up to 8 kHz | unchanged | up to 1 kHz through the adapter |
+| Cost | the mouse | free | about $4-18 |
+| Algorithm | not published (Corsair describes it as patented) | open, documented, unit-tested (not yet validated with players) | same |
 
 omnisens is an independent project built from public motor-control research.
 It is not a reimplementation of PureVector, and nobody (including Corsair)
@@ -148,9 +168,10 @@ aim. The blind A/B mode is there so you can find out for yourself.
 
 ## Fair play
 
-omnisens is a separate USB device that changes mouse input. It does not aim
-for you, read the game or add inputs: everything it sends is your own mouse
-movement and clicks, with the movement scaled by a fixed per-direction
+omnisens changes mouse input: the adapter is a separate USB device, and the
+app does it through Raw Accel (Windows) or a virtual mouse (Linux). It does
+not aim for you, read the game or add inputs: everything it sends is your own
+mouse movement and clicks, with the movement scaled by a fixed per-direction
 profile. Even so:
 
 * **Tournaments and leagues:** competitive rulebooks (for example Riot's VCT
@@ -160,8 +181,9 @@ profile. Even so:
 * **Online play:** the adapter identifies itself on USB as an "omnisens
   adapter" with its own USB IDs. It does not hide from or impersonate
   anything, and a game's anti-cheat may treat it like any other
-  input-modifying device. No game, league or anti-cheat vendor has approved
-  it.
+  input-modifying device. On Windows the app uses Raw Accel, whose FAQ says
+  its signed driver is designed to work with anti-cheat but cannot guarantee
+  it. No game, league or anti-cheat vendor has approved omnisens.
 
 Check the rules of each game, platform and event before using it, including
 in casual or ranked online matchmaking. You are responsible for how you use

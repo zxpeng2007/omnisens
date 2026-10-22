@@ -6,6 +6,7 @@ import { gameById } from './games.js';
 import { polarChart, legend } from './plot.js';
 import { $, $$, h, toast, attempt, download, copyWithToast, fmt, debounce, dateStamp } from './ui.js';
 import { loadFile } from './view-calibrate.js';
+import { isDesktop } from './desktop.js';
 
 let ctx;
 let sent = false;
@@ -15,6 +16,7 @@ export function init(c) {
   ctx.on('fit', () => { if (ctx.route === 'results') render(); });
   ctx.on('session', () => { sent = false; });
   ctx.on('device', () => { if (ctx.route === 'results' && ctx.fit) renderActions(); });
+  ctx.on('desktop', () => { if (ctx.route === 'results' && ctx.fit) renderActions(); });
 
   $('#res-load').addEventListener('change', (e) => loadFile(e.target));
   $('#res-demo').addEventListener('click', () => attempt('Loading the example', () => ctx.loadSample()));
@@ -50,6 +52,10 @@ export function init(c) {
   });
   $('#res-copy-code').addEventListener('click', () => copyWithToast(encodeProfile(profile()), 'Profile code copied'));
   $('#act-send').addEventListener('click', send);
+  $('#act-pc').addEventListener('click', () => {
+    ctx.pcPick = 'result';
+    ctx.navigate('pc');
+  });
   $('#act-save').addEventListener('click', () => attempt('Saving to flash', async () => {
     await ctx.withDevice((d) => d.save());
     await ctx.refreshDevice();
@@ -94,6 +100,9 @@ async function send() {
   });
 }
 
+/** The session was recorded on top of a profile (adapter or this PC) that the result refines. */
+const refining = (s) => s.adapter === 'refine' || s.desktop === 'refine';
+
 function render() {
   const nf = ctx.fit;
   const s = ctx.session;
@@ -128,13 +137,17 @@ function renderMeta(s) {
   if (game) parts.push(st.game === 'cm360' ? `${Number(s.cm360).toFixed(2)} cm/360` : `${game.name}, sens ${st.sens} @ ${s.dpi} DPI (${Number(s.cm360).toFixed(2)} cm/360)`);
   const measured = s.trials.filter((t) => !t.warmup).length;
   parts.push(`${measured} flicks recorded`);
-  parts.push(s.adapter === 'refine' ? 'refined the adapter profile' : s.adapter === 'fresh' ? 'adapter bypassed' : 'no adapter');
+  parts.push(s.adapter === 'refine' ? 'refined the adapter profile'
+    : s.adapter === 'fresh' ? 'adapter bypassed'
+      : s.desktop === 'refine' ? 'refined the profile on this PC'
+        : s.desktop === 'fresh' ? 'correction on this PC paused'
+          : 'no adapter');
   if (s.simulated) parts.push('simulated example data');
   $('#res-meta').textContent = parts.join(' · ');
 }
 
 function renderVerdict(nf, s) {
-  const v = verdict(nf, s.adapter === 'refine');
+  const v = verdict(nf, refining(s));
   const card = $('#res-verdict');
   card.className = `card verdict verdict-${v.kind}`;
   const icon = { pass: '✓', flat: '≈', error: '!', info: 'i' }[v.kind];
@@ -157,7 +170,7 @@ function renderVerdict(nf, s) {
     kids.push(h('p', { class: 'warn-line' }, 'Recorded without raw input: OS pointer acceleration may have distorted the measurement. Recalibrate in Chrome or Edge with "Enhance pointer precision" off for best results.'));
   }
   if (!nf.error && !nf.applied) {
-    kids.push(h('p', { class: 'muted small' }, `The values below equal your ${s.adapter === 'refine' ? 'current profile' : 'flat profile (1.000x everywhere)'}. Tick "Apply anyway" under Tune to see the measured pattern.`));
+    kids.push(h('p', { class: 'muted small' }, `The values below equal your ${refining(s) ? 'current profile' : 'flat profile (1.000x everywhere)'}. Tick "Apply anyway" under Tune to see the measured pattern.`));
   }
   if (nf.warnings.length) kids.push(h('ul', { class: 'warnings' }, ...nf.warnings.map((w) => h('li', {}, w))));
   card.replaceChildren(...kids);
@@ -271,21 +284,29 @@ function renderActions() {
   const nf = ctx.fit;
   if (!nf) return;
   const sendBtn = $('#act-send');
+  const pcBtn = $('#act-pc');
   const hint = $('#act-hint');
   const usable = nf.ok && !nf.error;
   for (const id of ['#act-json', '#act-rawaccel', '#res-copy-code', '#res-copy-values']) $(id).disabled = !usable;
-  if (!ctx.dev) {
-    sendBtn.disabled = true;
+  // Inside the omnisens app (and where it can apply profiles) "Apply on this PC" sits next to the adapter.
+  const pc = isDesktop() && ['rawaccel', 'engine'].includes(ctx.desktop?.method);
+  pcBtn.hidden = !pc;
+  pcBtn.disabled = !usable || !nf.applied;
+  pcBtn.classList.toggle('primary', pc && !ctx.dev);
+  sendBtn.classList.toggle('primary', !pc || !!ctx.dev);
+  sendBtn.disabled = !ctx.dev || !usable || !nf.applied;
+  if (!ctx.dev && !pc) {
     hint.textContent = 'Connect an adapter on the Adapter page to send the profile. Without one, copy the values or export them (Raw Accel works on Windows).';
   } else if (!usable) {
-    sendBtn.disabled = true;
-    hint.textContent = 'Nothing to send yet: record more flicks. You can download this session and re-analyse it later.';
+    hint.textContent = 'Nothing to use yet: record more flicks. You can download this session and re-analyse it later.';
   } else if (!nf.applied) {
-    sendBtn.disabled = true;
-    hint.textContent = 'Nothing to send: no reliable directional bias, so your profile stays as it is. Tick "Apply anyway" to send the measured pattern.';
-  } else {
-    sendBtn.disabled = false;
+    hint.textContent = 'Nothing to change: no reliable directional bias, so your profile stays as it is. Tick "Apply anyway" to use the measured pattern.';
+  } else if (ctx.dev) {
     hint.textContent = `Sends ${nf.nPoints} points, direction smoothing for ${ctx.session.dpi} DPI, and keeps the adapter's rotation and toggle settings.`;
+  } else {
+    hint.textContent = ctx.desktop?.method === 'rawaccel'
+      ? 'Apply on this PC shows how close Raw Accel gets to this profile before anything changes. To use an adapter instead, connect it on the Adapter page.'
+      : 'Apply on this PC runs this profile on this computer. To use an adapter instead, connect it on the Adapter page.';
   }
   $('#act-save').hidden = !(sent && ctx.dev && ctx.devStatus?.dirty !== false);
 }

@@ -24,10 +24,12 @@ jobs:
       - name: Web tests
         run: node --test "web/test/*.test.mjs"
 
-      - name: Shared C/JS vectors are up to date
+      - name: Shared C/JS/Go vectors are up to date
         run: |
           node web/test/gen-vectors.mjs > /tmp/vectors.inc
           diff -u firmware/test/vectors.inc /tmp/vectors.inc
+          node web/test/gen-vectors.mjs --json > /tmp/vectors.json
+          diff -u desktop/internal/omnicore/testdata/vectors.json /tmp/vectors.json
 
       - name: Firmware host tests (ASan + UBSan)
         run: make -C firmware/test run CC=gcc
@@ -76,28 +78,98 @@ jobs:
           path: dist/*.uf2
           if-no-files-found: error
 
+  desktop:
+    name: Desktop app (build and test)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.mod
+
+      - name: Embed the web tool
+        run: go generate ./...
+
+      - name: Vet and test (Linux)
+        run: |
+          go vet ./...
+          GOOS=windows go vet ./...
+          GOOS=darwin go build ./...
+          go test ./...
+
+      - name: uinput integration test (root)
+        run: |
+          sudo modprobe uinput || true
+          sudo modprobe evdev || true
+          sudo -E env "PATH=$PATH" go test -tags integration -count=1 ./internal/linuxengine/
+
+      - name: Build release binaries
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="dev-${GITHUB_SHA::7}"; fi
+          mkdir -p ../dist
+          build() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "../dist/$3" ./cmd/omnisens; }
+          build windows amd64 omnisens-windows-x64.exe
+          build windows arm64 omnisens-windows-arm64.exe
+          build linux amd64 omnisens-linux-x64
+          build linux arm64 omnisens-linux-arm64
+          ls -la ../dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: omnisens-desktop
+          path: dist/omnisens-*
+          if-no-files-found: error
+
+  desktop-windows:
+    name: Desktop app (Windows tests)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.mod
+
+      - name: Embed the web tool, vet and test
+        shell: bash
+        run: |
+          go generate ./...
+          go vet ./...
+          go test ./...
+
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, firmware]
+    needs: [test, firmware, desktop, desktop-windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
 
+      # Only the desktop app is published. Firmware UF2s stay CI artifacts
+      # until omnisens has its own USB PID (see docs/PROTOCOL.md).
       - uses: actions/download-artifact@v8
         with:
+          name: omnisens-desktop
           path: dist
-          merge-multiple: true
 
       # Third-party action with write access: pinned to the v3.0.3 commit.
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
-          # Pre-releases until the firmware has been tested on hardware.
+          # Pre-releases until omnisens has been tested on real setups.
           prerelease: true
           generate_release_notes: true
           files: |
-            dist/*.uf2
+            dist/omnisens-*
             LICENSE
             THIRD_PARTY_NOTICES.md
