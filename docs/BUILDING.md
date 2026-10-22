@@ -6,7 +6,8 @@ calibration tool runs at https://zxpeng2007.github.io/omnisens/.
 
 ## Firmware
 
-Requirements: `cmake` (3.13+), `ninja` or `make`, `arm-none-eabi-gcc` with
+Requirements: `cmake` (3.17+; Ubuntu 20.04 and Debian 10 need a newer one
+than apt provides, e.g. `pip install cmake`), `ninja` or `make`, `arm-none-eabi-gcc` with
 newlib, a host C/C++ compiler (pico-sdk builds `pioasm` and `picotool`), git
 and Python 3. On Ubuntu/Debian or WSL:
 
@@ -18,8 +19,11 @@ Fetch the pinned dependencies (pico-sdk 2.3.1, TinyUSB 0.21.0 and a pinned
 Pico-PIO-USB commit) into `firmware/deps/`:
 
 ```bash
-firmware/scripts/fetch-deps.sh
+bash firmware/scripts/fetch-deps.sh
 ```
+
+To keep them somewhere else (for example shared between clones), export
+`OMNI_DEPS_DIR` for both the script and CMake, or pass `-DOMNI_DEPS_DIR=...`.
 
 Build for a board (any file name in `firmware/boards/` without extension):
 
@@ -30,7 +34,9 @@ cmake --build build
 
 The result is `build/omnisens-<board>.uf2`. To use dependencies that live
 elsewhere, set `PICO_SDK_PATH`, `PICO_TINYUSB_PATH` and `PICO_PIO_USB_PATH`
-(as environment variables or `-D` options).
+(as environment variables or `-D` options). The resolved paths are cached on
+the first configure; change them with `-D` or by deleting the build
+directory.
 
 Optional build settings:
 
@@ -78,8 +84,8 @@ The tool is plain HTML/CSS/ES modules with no build step. Serve `web/` over
 HTTP (WebHID and raw pointer lock need `localhost` or HTTPS):
 
 ```bash
-python -m http.server 8731 --directory web
+python -m http.server 8000 --directory web
 ```
 
-then open http://localhost:8731/. Pushing to `main` deploys it to GitHub
+then open http://localhost:8000/. Pushing to `main` deploys it to GitHub
 Pages through `.github/workflows/pages.yml`.

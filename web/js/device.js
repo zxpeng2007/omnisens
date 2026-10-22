@@ -130,7 +130,6 @@ export class OmniDevice extends EventTarget {
       mouseVid: dv.getUint16(6, true),
       mousePid: dv.getUint16(8, true),
       reportRate: dv.getUint16(10, true),
-      mouseIntervalMs: u8[12],
       boardId: u8[13],
       uptimeMs: dv.getUint32(14, true),
       saveCount: dv.getUint32(18, true),

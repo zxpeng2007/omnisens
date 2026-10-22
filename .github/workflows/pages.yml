@@ -26,11 +26,13 @@ jobs:
 
       - uses: actions/configure-pages@v6
 
-      - name: Stage site (tests and fixtures stay out)
+      - name: Stage site (only the app and the example session, no tests)
         run: |
-          mkdir -p _site
+          mkdir -p _site/assets
           cp -r web/index.html web/css web/js _site/
-          [ -d web/assets ] && cp -r web/assets _site/ || true
+          [ -d web/assets ] && cp -r web/assets/. _site/assets/ || true
+          # Example session behind the "See an example result" button.
+          cp web/test/fixtures/sample-session.json _site/assets/
           touch _site/.nojekyll
 
       - uses: actions/upload-pages-artifact@v5

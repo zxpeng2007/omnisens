@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.17)  # pico-sdk 2.x's picotool lookup needs 3.17
 
 # Board: one of the files in firmware/boards (without extension).
 set(OMNI_BOARD "feather_rp2040_usb_host" CACHE STRING "Target board, see firmware/boards")
@@ -8,9 +8,16 @@ if(NOT EXISTS ${OMNI_BOARD_DIR}/${OMNI_BOARD}.cmake)
 endif()
 include(${OMNI_BOARD_DIR}/${OMNI_BOARD}.cmake)
 
-# Dependencies: -D options, then environment variables, then firmware/deps
-# (populated by scripts/fetch-deps.sh). Must be known before pico_sdk_init().
-set(OMNI_DEPS_DIR ${CMAKE_CURRENT_LIST_DIR}/deps)
+# Dependencies: -D options, then environment variables, then OMNI_DEPS_DIR
+# (populated by scripts/fetch-deps.sh, default firmware/deps). The resolved
+# paths are cached so later re-configures keep using the same versions.
+# Must be known before pico_sdk_init().
+if(DEFINED ENV{OMNI_DEPS_DIR})
+    set(_omni_deps_default "$ENV{OMNI_DEPS_DIR}")
+else()
+    set(_omni_deps_default "${CMAKE_CURRENT_LIST_DIR}/deps")
+endif()
+set(OMNI_DEPS_DIR "${_omni_deps_default}" CACHE PATH "Directory holding pico-sdk, tinyusb and Pico-PIO-USB (see scripts/fetch-deps.sh)")
 foreach(dep PICO_SDK_PATH:pico-sdk PICO_TINYUSB_PATH:tinyusb PICO_PIO_USB_PATH:Pico-PIO-USB)
     string(REPLACE ":" ";" dep ${dep})
     list(GET dep 0 var)
@@ -22,8 +29,10 @@ foreach(dep PICO_SDK_PATH:pico-sdk PICO_TINYUSB_PATH:tinyusb PICO_PIO_USB_PATH:P
         set(${var} ${OMNI_DEPS_DIR}/${dir})
     endif()
     if(NOT ${var})
-        message(FATAL_ERROR "${var} is not set. Run firmware/scripts/fetch-deps.sh or pass -D${var}=...")
+        message(FATAL_ERROR "${var} is not set. Run 'bash firmware/scripts/fetch-deps.sh', "
+                            "or pass -DOMNI_DEPS_DIR=<its directory> or -D${var}=<path>.")
     endif()
+    set(${var} "${${var}}" CACHE PATH "omnisens: path to ${dir}" FORCE)
     message(STATUS "omnisens: ${var} = ${${var}}")
 endforeach()
 

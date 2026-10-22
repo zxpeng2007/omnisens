@@ -61,7 +61,7 @@ jobs:
           key: deps-${{ hashFiles('firmware/scripts/fetch-deps.sh') }}
 
       - name: Fetch pinned dependencies
-        run: firmware/scripts/fetch-deps.sh
+        run: bash firmware/scripts/fetch-deps.sh
 
       - name: Build
         run: |

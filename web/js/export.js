@@ -31,6 +31,12 @@ export function decodeProfile(text) {
   if (s.startsWith('{')) {
     const j = JSON.parse(s);
     if (!Array.isArray(j.gains) || !j.gains.length) throw new Error('JSON profile needs a "gains" array.');
+    if (j.gains.length > 16) throw new Error(`A profile has at most 16 directions; this one has ${j.gains.length}.`);
+    j.gains.forEach((g, k) => {
+      if (typeof g !== 'number' || !Number.isFinite(g) || g < 0.1 || g > 8) {
+        throw new Error(`Gain ${k + 1} (${JSON.stringify(g)}) must be a number between 0.1 and 8.`);
+      }
+    });
     return sanitizeConfig({
       flags: (j.enabled === false ? 0 : 1) | (j.interpolation === 'linear' ? 2 : 0) | (j.chordToggle === false ? 0 : 4),
       nPoints: j.gains.length,

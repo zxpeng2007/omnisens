@@ -41,7 +41,7 @@
         <p class="lead">Flick at targets for a few minutes. omnisens measures how far your first flick over- or undershoots in each direction and turns that into 8 directional sensitivity multipliers, the same idea as Corsair's PureVector, for any mouse.</p>
         <ol class="steps">
           <li><span class="step-n" aria-hidden="true">1</span><div><b>Set your sensitivity</b><span>So targets move exactly like in your game.</span></div></li>
-          <li><span class="step-n" aria-hidden="true">2</span><div><b>Flick for about 6 minutes</b><span>Centre, target, centre. Hit each target in one motion.</span></div></li>
+          <li><span class="step-n" aria-hidden="true">2</span><div><b>Flick for 5 to 8 minutes</b><span>Centre, target, centre. Hit each target in one motion.</span></div></li>
           <li><span class="step-n" aria-hidden="true">3</span><div><b>Get your 8 directional values</b><span>Send them to the adapter, copy them or export them.</span></div></li>
         </ol>
         <div class="cta-row">
@@ -70,8 +70,8 @@
         <fieldset class="block">
           <legend><span class="legend-n">2</span>Session length</legend>
           <div class="seg" role="radiogroup" aria-label="Session length">
-            <label class="seg-opt"><input type="radio" name="preset" value="quick"><span><b>Quick</b><small>warm-up + 3 rounds, about 4 min</small></span></label>
-            <label class="seg-opt"><input type="radio" name="preset" value="standard"><span><b>Standard</b><small>warm-up + 6 rounds, about 7-8 min</small></span></label>
+            <label class="seg-opt"><input type="radio" name="preset" value="quick"><span><b>Quick</b><small>warm-up + 3 rounds, about 5 min</small></span></label>
+            <label class="seg-opt"><input type="radio" name="preset" value="standard"><span><b>Standard</b><small>warm-up + 5 rounds, about 8 min</small></span></label>
             <label class="seg-opt"><input type="radio" name="preset" value="custom"><span><b>Custom</b><small>2-10 rounds</small></span></label>
           </div>
           <label class="field inline" id="w-rounds" hidden><span>Rounds</span><input id="f-rounds" type="number" min="2" max="10" step="1" inputmode="numeric"></label>
@@ -213,7 +213,7 @@
         <h2>Connect your adapter</h2>
         <p>Plug the adapter into your PC and your mouse into the adapter, then pick <b>omnisens</b> in the browser's device list.</p>
         <div class="cta-row"><button class="btn primary big" type="button" id="dev-connect">Connect adapter</button></div>
-        <p class="muted small">No adapter yet? The firmware runs on a Raspberry Pi Pico (RP2040) or similar board with a USB host port; see the README for parts and flashing.</p>
+        <p class="muted small">No adapter yet? The firmware runs on a Raspberry Pi Pico (RP2040) or similar board with a USB host port; see <a href="https://github.com/zxpeng2007/omnisens/blob/main/docs/HARDWARE.md" target="_blank" rel="noopener">docs/HARDWARE.md</a> for parts and flashing.</p>
       </div>
 
       <div id="dev-connected" hidden>
@@ -316,7 +316,7 @@
         </div>
         <div class="card">
           <div class="card-head"><h2>Firmware default (C header)</h2><button class="btn small" type="button" id="exp-copy-header">Copy</button></div>
-          <p class="muted small">Builds the profile into the firmware as its factory default: save this as <code>firmware/src/profile_default.h</code> and rebuild (see firmware/README).</p>
+          <p class="muted small">Builds the profile into the firmware as its factory default: save this as <code>firmware/src/profile_default.h</code> and rebuild (see <a href="https://github.com/zxpeng2007/omnisens/blob/main/docs/BUILDING.md" target="_blank" rel="noopener">docs/BUILDING.md</a>).</p>
           <pre class="code" id="exp-header"></pre>
         </div>
         <div class="card">
@@ -375,7 +375,7 @@
           <li>The adapter forwards up to 1000 Hz. Mice set to 2000-8000 Hz are reduced to 1000 Hz through it.</li>
           <li>The calibration measures flicks. Tracking uses different motor control; if you mostly track, use tracking-safe mode and a lower strength.</li>
           <li>Your hand adapts to any sensitivity change. Expect a few hundred flicks before a new profile settles, and recalibrate after changing grip, mousepad, DPI or posture.</li>
-          <li>Measurement noise is real. Short sessions give wide uncertainty ranges; Standard (6 rounds) or more is recommended.</li>
+          <li>Measurement noise is real. Short sessions give wide uncertainty ranges; Standard (5 rounds) or more is recommended.</li>
         </ul>
       </div>
       <div class="card notice">

@@ -9,7 +9,7 @@
 export const AMPLITUDES = [8, 16, 28];
 export const DIRECTIONS = 16;
 export const MIN_SEPARATION = 45;
-export const PRESETS = { quick: 3, standard: 6 };
+export const PRESETS = { quick: 3, standard: 5 };
 export const WARMUP_TARGETS = 24;
 
 export function mulberry32(seed) {

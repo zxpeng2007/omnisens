@@ -10,9 +10,17 @@ const SPIKE_LIMIT = 2000;  // counts per event; only filtered in accelerated mod
 export const pointerLockSupported = () =>
   typeof document !== 'undefined' && typeof Element !== 'undefined' && 'requestPointerLock' in Element.prototype;
 
-/** unadjustedMovement (raw input) is only implemented by Chromium browsers. */
-export const rawInputLikely = () =>
-  typeof navigator !== 'undefined' && !!navigator.userAgentData && !/Linux/i.test(navigator.userAgentData.platform || '');
+/**
+ * Whether a lock granted with { unadjustedMovement: true } really delivers raw
+ * counts. Chromium, Safari and Firefox 152+ reject the option with
+ * NotSupportedError where they cannot honour it (e.g. on Linux); older Firefox
+ * returns a promise but silently ignores the option.
+ */
+export const rawInputLikely = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ff = /Firefox\/(\d+)/.exec(navigator.userAgent || '');
+  return !ff || Number(ff[1]) >= 152;
+};
 
 export class LockError extends Error {
   constructor(message, code) {

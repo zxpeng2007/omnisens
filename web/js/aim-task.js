@@ -231,6 +231,12 @@ export class AimTask {
     tr.hit = hit;
     tr.timeout = !hit;
     tr.hitMs = hit ? r2(Math.max(0, ts - this.spawnTs)) : null;
+    // A mouse sends nothing while still, so close the series with the position
+    // held until the click or timeout; otherwise a flick that lands on target
+    // in one movement would seem to end mid-motion.
+    const last = tr.t.length - 1;
+    tr.endMs = r2(Math.max(tr.t[last], ts - this.spawnTs));
+    if (tr.endMs > tr.t[last]) { tr.t.push(tr.endMs); tr.x.push(tr.x[last]); tr.y.push(tr.y[last]); }
     this.trials.push(tr);
     this.trial = null;
   }

@@ -58,13 +58,17 @@ function flick(rng, aim, target, radiusDeg) {
     const nx = Math.round(ux * along - uy * side), ny = Math.round(uy * along + ux * side);
     if (nx !== cx || ny !== cy) { t.push(ms); x.push(nx); y.push(ny); cx = nx; cy = ny; }
   }
+  // The recorder closes every trial with the position held until the click.
+  const endMs = Math.round(end);
+  if (endMs > t[t.length - 1]) { t.push(endMs); x.push(cx); y.push(cy); }
   const finalAim = { yaw: aim.yaw + cx * DPC, pitch: aim.pitch - cy * DPC };
   const missFirst = rng() < 0.15;
   return {
     req: [Math.round(req[0] * 1000) / 1000, Math.round(req[1] * 1000) / 1000],
     t, x, y,
     hit: true,
-    hitMs: Math.round(end),
+    hitMs: endMs,
+    endMs,
     clicks: missFirst ? 2 : 1,
     timeout: false,
     degPerCount: DPC,

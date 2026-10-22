@@ -130,7 +130,7 @@ function renderStatus() {
     ['Firmware', `${st.firmware} (protocol ${st.protocol})`],
     ['Board', st.board || `id ${st.boardId}`],
     ['Mouse', st.mouseAttached ? `attached, ${fmt.hex4(st.mouseVid)}:${fmt.hex4(st.mousePid)}` : 'none attached'],
-    ['Report rate', st.mouseAttached ? `${st.reportRate} reports/s${st.mouseIntervalMs ? ` (bInterval ${st.mouseIntervalMs} ms)` : ''}` : '-'],
+    ['Report rate', st.mouseAttached ? `${st.reportRate} reports/s` : '-'],
     ['Keyboard passthrough', st.keyboardAttached ? 'yes (macro keys work)' : 'no'],
     ['Correction', st.enabled ? 'on' : 'off (passthrough)'],
     ['Unsaved changes', st.dirty ? 'yes: Save to flash to keep them' : 'no'],

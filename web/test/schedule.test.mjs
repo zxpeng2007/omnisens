@@ -72,10 +72,10 @@ test('warm-up, calibration plan and A/B blocks', () => {
 
 test('session length presets', () => {
   assert.equal(roundsFor('quick'), 3);
-  assert.equal(roundsFor('standard'), 6);
+  assert.equal(roundsFor('standard'), 5);
   assert.equal(roundsFor('custom', 12), 10);
   assert.equal(roundsFor('custom', 1), 2);
-  assert.equal(roundsFor('custom', 'x'), 6);
+  assert.equal(roundsFor('custom', 'x'), 5);
 });
 
 test('aim geometry: required counts point in the planned mouse direction', () => {

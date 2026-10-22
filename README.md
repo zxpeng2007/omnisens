@@ -59,7 +59,7 @@ USB mouse, wired or wireless:
 3. **Plug in:** mouse → adapter → PC. It behaves like your normal mouse.
 4. **Calibrate.** Open the [calibration tool](https://zxpeng2007.github.io/omnisens/)
    in Chrome or Edge, enter your DPI, game and in-game sensitivity, connect
-   the adapter, and flick for about six minutes.
+   the adapter, and flick for five to eight minutes.
 5. **Apply.** Review your values, press *Send to adapter*, then *Save*. The
    profile lives on the adapter; nothing runs on your PC while you play.
 

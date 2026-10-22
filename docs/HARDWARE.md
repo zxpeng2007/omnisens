@@ -26,7 +26,7 @@ settings in its own flash.
 If you just want it to work, get the **Feather**. If you want the cheapest
 build, use a **Pico (RP2040)** and a USB-A socket or a cut extension cable.
 The Waveshare RP2350-USB-A has the nicest form factor (a thumb-drive-sized
-dongle) but needs a small soldering fix.
+stick) but needs a small soldering fix.
 
 ### Adafruit Feather RP2040 USB Host
 
@@ -57,8 +57,9 @@ the Pico:
 
 ### Waveshare RP2350-USB-A
 
-Shaped like a USB dongle: USB-A plug to the PC, USB-A socket for the mouse
-(D+ GPIO12, D- GPIO13), RGB LED on GPIO16.
+A small stick with a USB-C port for the PC and a USB-A socket for the mouse
+(D+ GPIO12, D- GPIO13), RGB LED on GPIO16. A short USB-C cable or a
+USB-A-to-C adapter connects it to the PC.
 
 **Required fix:** the board has a 1.5 kΩ pull-up resistor (R13) on the
 socket's D+ line, meant for using the socket as a device. In host mode it
@@ -113,7 +114,9 @@ without software (it does not change the saved setting).
   with the mouse model.
 * **Power.** The mouse is powered by the PC through the adapter. Very
   power-hungry RGB mice may need the Feather (fused boost converter) or a
-  powered hub.
+  powered hub. While the PC sleeps the status LED turns off; on the Feather
+  the mouse is also switched off if the PC has not enabled wake-on-click,
+  and comes back when the PC wakes.
 * **Vendor software.** G Hub, Synapse, iCUE and similar tools cannot see the
   mouse through the adapter. Set DPI, polling rate, RGB and button mappings
   first, saved to the mouse's onboard memory, then put the adapter in

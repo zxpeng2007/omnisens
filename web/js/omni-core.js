@@ -1,5 +1,6 @@
 // omni-core.js - JS mirror of firmware/src/omni_core.c (see docs/ALGORITHM.md).
-// Keep the two in sync; web/test/core.test.mjs checks them against shared vectors.
+// Keep the two in sync: web/test/gen-vectors.mjs writes firmware/test/vectors.inc,
+// which the C tests check against; web/test/core.test.mjs covers the JS side.
 //
 // Conventions: deltas use HID/browser axes (+x right, +y down). Direction angle
 // theta = atan2(-dy, dx) in degrees CCW: 0 right, 90 up/away, 180 left, 270 down.
@@ -51,7 +52,8 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /** Returns a sanitized copy, clamped exactly like omni_config_sanitize(). */
 export function sanitizeConfig(cfg) {
-  const c = { ...defaultConfig(), ...cfg, gainsQ12: [...(cfg.gainsQ12 || [])] };
+  const given = Object.fromEntries(Object.entries(cfg || {}).filter(([, v]) => v !== undefined));
+  const c = { ...defaultConfig(), ...given, gainsQ12: [...(given.gainsQ12 || [])] };
   c.version = CONFIG_VERSION;
   c.flags = (c.flags | 0) & FLAGS_KNOWN;
   c.nPoints = clamp(c.nPoints | 0, 1, MAX_POINTS);
@@ -60,8 +62,9 @@ export function sanitizeConfig(cfg) {
   c.rotationCdeg = clamp(c.rotationCdeg | 0, -ROTATION_LIMIT, ROTATION_LIMIT);
   c.calibDpi = clamp(c.calibDpi | 0, 0, 0xffff);
   for (let i = 0; i < MAX_POINTS; i++) {
-    const g = c.gainsQ12[i] ?? GAIN_ONE;
-    c.gainsQ12[i] = i >= c.nPoints ? GAIN_ONE : clamp(Math.round(g), GAIN_MIN, GAIN_MAX);
+    // NaN would be written as 0 and become the firmware's 0.1x minimum: use 1.0x instead.
+    const g = Number(c.gainsQ12[i] ?? GAIN_ONE);
+    c.gainsQ12[i] = i >= c.nPoints || Number.isNaN(g) ? GAIN_ONE : clamp(Math.round(g), GAIN_MIN, GAIN_MAX);
   }
   let label = '';
   for (const ch of String(c.label ?? '')) {
@@ -143,7 +146,7 @@ export function configGains(cfg) {
 
 /** Q12 encoding of float gains, clamped to the firmware's legal range. */
 export function gainsToQ12(gains) {
-  return gains.map((g) => clamp(Math.round(g * GAIN_ONE), GAIN_MIN, GAIN_MAX));
+  return gains.map((g) => (Number.isNaN(Number(g)) ? GAIN_ONE : clamp(Math.round(g * GAIN_ONE), GAIN_MIN, GAIN_MAX)));
 }
 
 const roundAway = (v) => (v >= 0 ? Math.floor(v + 0.5) : -Math.floor(-v + 0.5));
@@ -213,5 +216,5 @@ export class Engine {
 export function vecAngle(dx, dy) {
   let a = (Math.atan2(-dy, dx) * 180) / Math.PI;
   if (a < 0) a += 360;
-  return a;
+  return a + 0;  // atan2(-0, x) is -0
 }
