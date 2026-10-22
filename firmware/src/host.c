@@ -19,9 +19,18 @@ typedef struct {
 
 static slot_t slots[CFG_TUH_HID];
 
-// Motion that could not be queued (core 0 busy) is merged into the next event.
-static mouse_event_t pending;
-static bool have_pending;
+// Mouse events core 0 has not taken yet because its queue was full (it is
+// busy, e.g. erasing flash, or the PC stopped polling). Every button change
+// stays a separate entry, in order; motion is only folded into an entry with
+// the same buttons, so a quick click survives a stalled core 0.
+#define BACKLOG_LEN 16
+static mouse_event_t backlog[BACKLOG_LEN];
+static int backlog_head, backlog_count;
+
+// Newest keyboard report core 0 has not taken yet. Only the latest is kept:
+// in-between states can be lost, but the final one (the last release) is not.
+static kb_event_t kb_pending;
+static bool have_kb_pending;
 
 static slot_t *find_slot(uint8_t dev_addr, uint8_t idx) {
     for (int i = 0; i < CFG_TUH_HID; i++)
@@ -64,6 +73,34 @@ static uint16_t merged_buttons(void) {
     return b;
 }
 
+// Saturating sums: a mouse with 32-bit axes could otherwise overflow while
+// core 0 is stalled.
+static int32_t add32(int32_t a, int32_t b) {
+    int64_t v = (int64_t)a + b;
+    return (int32_t)(v > INT32_MAX ? INT32_MAX : v < INT32_MIN ? INT32_MIN : v);
+}
+
+static int16_t add16(int16_t a, int16_t b) {
+    int32_t v = (int32_t)a + b;
+    return (int16_t)(v > INT16_MAX ? INT16_MAX : v < INT16_MIN ? INT16_MIN : v);
+}
+
+static void fold(mouse_event_t *into, const mouse_event_t *ev) {
+    into->t_us = ev->t_us;
+    into->dx = add32(into->dx, ev->dx);
+    into->dy = add32(into->dy, ev->dy);
+    into->wheel = add16(into->wheel, ev->wheel);
+    into->pan = add16(into->pan, ev->pan);
+    into->buttons = ev->buttons;
+}
+
+static void flush_backlog(void) {
+    while (backlog_count && queue_try_add(&g_mouse_queue, &backlog[backlog_head])) {
+        backlog_head = (backlog_head + 1) % BACKLOG_LEN;
+        backlog_count--;
+    }
+}
+
 static void push_mouse(int32_t dx, int32_t dy, int32_t wheel, int32_t pan) {
     mouse_event_t ev = {
         .t_us = time_us_32(),
@@ -73,25 +110,33 @@ static void push_mouse(int32_t dx, int32_t dy, int32_t wheel, int32_t pan) {
         .pan = (int16_t)pan,
         .buttons = merged_buttons(),
     };
-    if (have_pending) {
-        // Core 0 was not draining the queue: fold the backlog into this event.
-        ev.dx += pending.dx;
-        ev.dy += pending.dy;
-        ev.wheel = (int16_t)(ev.wheel + pending.wheel);
-        ev.pan = (int16_t)(ev.pan + pending.pan);
-        have_pending = false;
+    flush_backlog();
+    if (!backlog_count && queue_try_add(&g_mouse_queue, &ev)) return;
+    if (backlog_count) {
+        mouse_event_t *last = &backlog[(backlog_head + backlog_count - 1) % BACKLOG_LEN];
+        // With the backlog full, folding is the last resort: the newest
+        // button state still wins, only edges in between are lost.
+        if (last->buttons == ev.buttons || backlog_count == BACKLOG_LEN) {
+            fold(last, &ev);
+            return;
+        }
     }
-    if (!queue_try_add(&g_mouse_queue, &ev)) {
-        pending = ev;
-        have_pending = true;
-    }
+    backlog[(backlog_head + backlog_count++) % BACKLOG_LEN] = ev;
+}
+
+static void flush_keyboard(void) {
+    if (have_kb_pending && queue_try_add(&g_kb_queue, &kb_pending)) have_kb_pending = false;
 }
 
 static void push_keyboard(const uint8_t *report, uint16_t len) {
     kb_event_t ev;
     memset(&ev, 0, sizeof(ev));
     memcpy(ev.report, report, len < sizeof(ev.report) ? len : sizeof(ev.report));
-    queue_try_add(&g_kb_queue, &ev);  // keyboard events are rare; drop if core 0 is stuck
+    flush_keyboard();
+    if (have_kb_pending || !queue_try_add(&g_kb_queue, &ev)) {
+        kb_pending = ev;
+        have_kb_pending = true;
+    }
 }
 
 void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, const uint8_t *desc, uint16_t desc_len) {
@@ -165,7 +210,10 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t idx, const uint8_t *re
             push_mouse(r.x, r.y, r.wheel, r.pan);
         }
     } else if (s && s->is_keyboard) {
-        push_keyboard(report, len);
+        // TinyUSB drops the transfer result, so a failed or stalled IN
+        // transfer arrives here with len 0. Forwarding it would release every
+        // held key on the PC; a boot keyboard report is always 8 bytes.
+        if (len >= 8) push_keyboard(report, len);
     }
     tuh_hid_receive_report(dev_addr, idx);
 }
@@ -185,7 +233,8 @@ void host_core1_main(void) {
 
     while (true) {
         tuh_task();
-        if (have_pending) push_mouse(0, 0, 0, 0);
+        flush_backlog();
+        flush_keyboard();
         g_host.heartbeat++;
     }
 }

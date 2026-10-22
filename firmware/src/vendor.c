@@ -34,7 +34,7 @@ static void fill_status(uint8_t *b) {
     put16(b + 6, g_host.vid);
     put16(b + 8, g_host.pid);
     put16(b + 10, g_app.reports_per_sec);
-    b[12] = 0;  // endpoint interval: not tracked
+    // b[12] is reserved and stays 0 (TinyUSB's HID host does not keep bInterval).
     b[13] = OMNI_BOARD_ID;
     put32(b + 14, to_ms_since_boot(get_absolute_time()));
     put32(b + 18, g_app.save_seq);

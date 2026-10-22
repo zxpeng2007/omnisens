@@ -134,7 +134,7 @@ function renderStatus() {
     ['Keyboard passthrough', st.keyboardAttached ? 'yes (macro keys work)' : 'no'],
     ['Correction', st.enabled ? 'on' : 'off (passthrough)'],
     ['Unsaved changes', st.dirty ? 'yes: Save to flash to keep them' : 'no'],
-    ['Saved profile', st.saved ? `yes (${st.saveCount} saves)` : 'none (factory defaults)'],
+    ['Saved profile', st.saved ? `yes (record #${st.saveCount})` : 'none (factory defaults)'],
     ['Uptime', `${Math.floor(st.uptimeMs / 60000)} min`],
   ];
   dl.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));

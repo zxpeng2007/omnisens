@@ -1,6 +1,7 @@
 // Host unit tests for hid_parser.c using descriptors shaped like real mice.
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "../src/hid_parser.h"
 #include "../src/report_descs.h"
@@ -75,6 +76,38 @@ static const uint8_t desc_tricky[] = {
     0xA4, 0x95, 0x05, 0x81, 0x03, 0xB4,
     0x09, 0x30, 0x09, 0x31, 0x05, 0x01, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x02, 0x81, 0x06,
     0x0B, 0x38, 0x00, 0x01, 0x00, 0x95, 0x01, 0x81, 0x06,
+    0xC0, 0xC0};
+
+// Absolute pointer (report 1, 3 buttons) declared before the relative mouse
+// (report 2, 5 buttons). Report 1's buttons must not shadow report 2's.
+static const uint8_t desc_abs_then_rel[] = {
+    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x01, 0x09, 0x01, 0xA1, 0x00,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00, 0x25, 0x01, 0x95, 0x03, 0x75, 0x01, 0x81, 0x02,
+    0x95, 0x01, 0x75, 0x05, 0x81, 0x03,
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x15, 0x00, 0x26, 0xFF, 0x7F, 0x75, 0x10, 0x95, 0x02, 0x81, 0x02,
+    0xC0, 0xC0,
+    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x02, 0x09, 0x01, 0xA1, 0x00,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x05, 0x15, 0x00, 0x25, 0x01, 0x95, 0x05, 0x75, 0x01, 0x81, 0x02,
+    0x95, 0x01, 0x75, 0x03, 0x81, 0x01,
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x02, 0x81, 0x06,
+    0xC0, 0xC0};
+
+// Wheel, Usage Page Consumer, AC Pan, then one Input item for both: the
+// wheel keeps the Generic Desktop page it was declared under.
+static const uint8_t desc_wheel_pan_item[] = {
+    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x09, 0x01, 0xA1, 0x00,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00, 0x25, 0x01, 0x95, 0x03, 0x75, 0x01, 0x81, 0x02,
+    0x95, 0x01, 0x75, 0x05, 0x81, 0x03,
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x02, 0x81, 0x06,
+    0x09, 0x38, 0x05, 0x0C, 0x0A, 0x38, 0x02, 0x95, 0x02, 0x81, 0x06,
+    0xC0, 0xC0};
+
+// X, Y, Wheel and AC Pan all in one Input item.
+static const uint8_t desc_axes_one_item[] = {
+    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x09, 0x01, 0xA1, 0x00,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x08, 0x15, 0x00, 0x25, 0x01, 0x95, 0x08, 0x75, 0x01, 0x81, 0x02,
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38, 0x05, 0x0C, 0x0A, 0x38, 0x02,
+    0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x04, 0x81, 0x06,
     0xC0, 0xC0};
 
 static void test_basic(void) {
@@ -163,6 +196,102 @@ static void test_absolute_and_tricky(void) {
     CHECK(hid_decode_mouse(&l, boot3, sizeof(boot3), &r) && r.wheel == 0 && r.y == -5, "3-byte boot report");
 }
 
+static void test_report_selection(void) {
+    mouse_layout_t l;
+    mouse_report_t r;
+    CHECK(hid_parse_mouse(desc_abs_then_rel, sizeof(desc_abs_then_rel), &l), "abs+rel: parse");
+    CHECK(l.uses_report_id && l.report_id == 2, "abs+rel: report id %d", l.report_id);
+    CHECK(l.button_count == 5, "abs+rel: %d buttons", l.button_count);
+    CHECK(l.buttons[0].bit_offset == 0 && l.buttons[0].bit_size == 1, "abs+rel: button 1 from report 2");
+    CHECK(l.x.bit_offset == 8 && l.x.bit_size == 8 && l.y.bit_offset == 16, "abs+rel: axes");
+    uint8_t rep[] = {0x02, 0x01, 0x05, 0xFB};
+    CHECK(hid_decode_mouse(&l, rep, sizeof(rep), &r), "abs+rel: decode");
+    CHECK(r.buttons == 0x1 && r.x == 5 && r.y == -5, "abs+rel: values b=%x x=%d y=%d", r.buttons, (int)r.x,
+          (int)r.y);
+    uint8_t abs_rep[] = {0x01, 0x01, 0x00, 0x10, 0x00, 0x10};
+    CHECK(!hid_decode_mouse(&l, abs_rep, sizeof(abs_rep), &r), "abs+rel: absolute report ignored");
+}
+
+static void test_usage_page_binding(void) {
+    mouse_layout_t l;
+    mouse_report_t r;
+    CHECK(hid_parse_mouse(desc_wheel_pan_item, sizeof(desc_wheel_pan_item), &l), "wheel+pan: parse");
+    CHECK(l.wheel.bit_offset == 24 && l.wheel.bit_size == 8, "wheel+pan: wheel at %d size %d", l.wheel.bit_offset,
+          l.wheel.bit_size);
+    CHECK(l.pan.bit_offset == 32 && l.pan.bit_size == 8, "wheel+pan: pan at %d size %d", l.pan.bit_offset,
+          l.pan.bit_size);
+    uint8_t rep[] = {0x01, 0x05, 0xFB, 0x01, 0xFF};
+    CHECK(hid_decode_mouse(&l, rep, sizeof(rep), &r), "wheel+pan: decode");
+    CHECK(r.buttons == 1 && r.x == 5 && r.y == -5 && r.wheel == 1 && r.pan == -1,
+          "wheel+pan: values b=%x x=%d y=%d w=%d p=%d", r.buttons, (int)r.x, (int)r.y, (int)r.wheel, (int)r.pan);
+
+    CHECK(hid_parse_mouse(desc_axes_one_item, sizeof(desc_axes_one_item), &l), "axes in one item: parse");
+    CHECK(l.button_count == 8, "axes in one item: buttons %d", l.button_count);
+    CHECK(l.x.bit_offset == 8 && l.y.bit_offset == 16 && l.wheel.bit_offset == 24 && l.pan.bit_offset == 32,
+          "axes in one item: x %d y %d wheel %d pan %d", l.x.bit_offset, l.y.bit_offset, l.wheel.bit_offset,
+          l.pan.bit_offset);
+}
+
+// Hostile descriptors must be rejected quickly: the firmware parses on
+// core 1, and a long stall there trips the watchdog on every enumeration.
+static void check_rejected_fast(const char *name, const uint8_t *desc, uint16_t len) {
+    mouse_layout_t l;
+    clock_t t0 = clock();
+    bool ok = hid_parse_mouse(desc, len, &l);
+    double ms = (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC;
+    CHECK(!ok, "%s: rejected", name);
+    CHECK(ms < 50.0, "%s: took %.1f ms", name, ms);
+}
+
+static const uint8_t mouse_head[] = {0x05, 0x01, 0x09, 0x02, 0xA1, 0x01};
+
+// Mouse collection, then `item` once, then Input (Data, Var) items to the end.
+static uint16_t fill_repeated_inputs(uint8_t *buf, uint16_t size, const uint8_t *item, uint16_t item_len) {
+    uint16_t n = 0;
+    memcpy(buf, mouse_head, sizeof(mouse_head));
+    n += sizeof(mouse_head);
+    memcpy(buf + n, item, item_len);
+    n += item_len;
+    while (n + 2 <= size) {
+        buf[n++] = 0x81;
+        buf[n++] = 0x02;
+    }
+    return n;
+}
+
+static void test_hostile(void) {
+    // Report Size 0 with Report Count 0xFFFFFFFF.
+    static const uint8_t size0[] = {0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x75, 0x00,
+                                    0x97, 0xFF, 0xFF, 0xFF, 0xFF, 0x81, 0x02, 0xC0};
+    check_rejected_fast("size 0", size0, sizeof(size0));
+
+    // size * count overflowing 32 bits must not wrap the offset back to 0.
+    static uint8_t buf[1024];
+    static const uint8_t wrap_to_base[] = {0x75, 0x02, 0x97, 0x00, 0x00, 0x00, 0x80};
+    static const uint8_t swing[] = {0x75, 0x01, 0x97, 0x01, 0x00, 0xFF, 0xFF};
+    uint16_t n = fill_repeated_inputs(buf, sizeof(buf), wrap_to_base, sizeof(wrap_to_base));
+    check_rejected_fast("2 x 0x80000000 bits", buf, n);
+    n = fill_repeated_inputs(buf, sizeof(buf), swing, sizeof(swing));
+    check_rejected_fast("1 x 0xFFFF0001 bits", buf, n);
+
+    // 16 report IDs, each with 65536 one-bit fields.
+    memcpy(buf, mouse_head, sizeof(mouse_head));
+    n = sizeof(mouse_head);
+    for (uint8_t id = 1; id <= 16; id++) {
+        const uint8_t item[] = {0x85, id, 0x75, 0x01, 0x97, 0x00, 0x00, 0x01, 0x00, 0x81, 0x02};
+        memcpy(buf + n, item, sizeof(item));
+        n += sizeof(item);
+    }
+    buf[n++] = 0xC0;
+    check_rejected_fast("16 report ids x 65536 fields", buf, n);
+
+    // A long item near the end of a 64 KB descriptor must not wrap the index.
+    static uint8_t big[65535];
+    big[65400] = 0xFE;
+    big[65401] = 0xFF;
+    check_rejected_fast("long item at 65400", big, sizeof(big));
+}
+
 // The adapter's own descriptors must describe exactly what main.c sends.
 static void test_own_descriptors(void) {
     mouse_layout_t l;
@@ -187,6 +316,9 @@ int main(void) {
     test_logi12();
     test_receiver();
     test_absolute_and_tricky();
+    test_report_selection();
+    test_usage_page_binding();
+    test_hostile();
     if (failures) {
         printf("%d check(s) failed\n", failures);
         return 1;

@@ -232,7 +232,10 @@ export function verdict(nf, refine = false) {
   if (!ev) {
     return { kind: 'info', title: 'Profile computed', text: 'This analysis version does not report an evidence test. Use the uncertainty ranges below to judge it.' };
   }
-  const rel = Number.isFinite(ev.reliability) ? `, reliability ${ev.reliability.toFixed(2)}` : '';
+  // evidence.reliability is the cross-half replication ratio (needs > 0.5).
+  const rel = Number.isFinite(ev.reliability)
+    ? `, replication ${ev.reliability.toFixed(2)} (needs > ${ev.replicationThreshold ?? 0.5})`
+    : '';
   if (ev.passed) {
     return { kind: 'pass', title: 'Directional bias detected', text: `${pText(ev.p)}${rel}. Your aim is measurably different by direction.` };
   }

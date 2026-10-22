@@ -2,9 +2,10 @@
 //
 // Gaming mice rarely use the 3-byte boot format in report mode: they add a
 // report ID, 16 buttons, 12- or 16-bit axes and a horizontal wheel. This
-// parser walks the descriptor once at mount time and records where each
-// field lives, so reports can be decoded with a few shifts. No SDK
-// dependencies; tested on the host in firmware/test.
+// parser walks the descriptor at mount time (twice: once to pick the mouse
+// report, once to collect its fields) and records where each field lives,
+// so reports can be decoded with a few shifts. No SDK dependencies; tested
+// on the host in firmware/test.
 #ifndef HID_PARSER_H
 #define HID_PARSER_H
 
@@ -39,7 +40,9 @@ typedef struct {
 } mouse_report_t;
 
 // Parse a report descriptor. Returns true and fills *out if a relative
-// mouse/pointer with X and Y was found.
+// mouse/pointer with X and Y was found. Only one report is decoded: if
+// several reports carry relative X/Y, the first one declared is used and
+// reports with other IDs are ignored.
 bool hid_parse_mouse(const uint8_t *desc, uint16_t len, mouse_layout_t *out);
 
 // Layout of the standard boot-protocol mouse report (buttons, X, Y, wheel).

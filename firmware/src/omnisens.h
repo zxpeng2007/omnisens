@@ -87,6 +87,7 @@ bool storage_save(const omni_config_t *cfg, uint32_t *seq);
 typedef enum { LED_NO_MOUSE, LED_ENABLED, LED_BYPASS } led_state_t;
 void led_init(void);
 void led_task(led_state_t state);
+void led_off(void);             // all dark (PC suspended); the next led_task() restores
 void led_flash(uint8_t times);  // short attention pattern (chord toggle)
 
 #endif  // OMNISENS_H

@@ -3,6 +3,7 @@
 //   bypass         -> off   (dim red on RGB boards)
 //   no mouse       -> slow blink (blue on RGB boards)
 //   chord toggled  -> quick flashes
+//   PC suspended   -> dark (the Feather's NeoPixel is powered down)
 #include "omnisens.h"
 #include "pico/stdlib.h"
 
@@ -31,6 +32,11 @@ static void put_led(bool on) { gpio_put(OMNI_LED_PIN, on == (OMNI_LED_ACTIVE_HIG
 static uint8_t flash_left;
 static uint32_t flash_next_us;
 static int last_level = -1;
+static bool dark;  // led_off() is in effect
+#if OMNI_WS2812_PIN >= 0 && OMNI_WS2812_POWER_PIN >= 0
+static bool powering_up;
+static uint32_t power_on_us;
+#endif
 
 void led_init(void) {
 #if OMNI_LED_PIN >= 0
@@ -72,8 +78,40 @@ static void show(int level, led_state_t state) {
 #endif
 }
 
+void led_off(void) {
+    if (dark) return;
+    dark = true;
+    last_level = -1;  // redraw on the next led_task()
+#if OMNI_LED_PIN >= 0
+    put_led(false);
+#endif
+#if OMNI_WS2812_PIN >= 0
+#if OMNI_WS2812_POWER_PIN >= 0
+    gpio_put(OMNI_WS2812_POWER_PIN, 0);
+#else
+    put_rgb(0, 0, 0);
+#endif
+#endif
+}
+
 void led_task(led_state_t state) {
     uint32_t now = time_us_32();
+    if (dark) {
+        dark = false;
+#if OMNI_WS2812_PIN >= 0 && OMNI_WS2812_POWER_PIN >= 0
+        gpio_put(OMNI_WS2812_POWER_PIN, 1);
+        powering_up = true;
+        power_on_us = now;
+#endif
+    }
+#if OMNI_WS2812_PIN >= 0 && OMNI_WS2812_POWER_PIN >= 0
+    // A colour sent while the NeoPixel's supply is still coming up can be
+    // lost, and show() only redraws on a change.
+    if (powering_up) {
+        if ((uint32_t)(now - power_on_us) < 1000u) return;
+        powering_up = false;
+    }
+#endif
     if (flash_left) {
         if ((int32_t)(now - flash_next_us) >= 0) {
             flash_left--;

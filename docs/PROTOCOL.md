@@ -34,9 +34,18 @@ dropped.
 ## Interface 1: keyboard passthrough
 
 Many gaming mice expose a second HID interface that types keys for macro
-buttons. Every keyboard interface on the attached device is switched to the
-boot protocol and its 8-byte reports are forwarded unchanged. Keyboard LED
-output reports from the PC are ignored.
+buttons. Only boot-subclass keyboard interfaces (`bInterfaceSubClass` 1,
+`bInterfaceProtocol` 1) are forwarded. Each one is switched to the boot
+protocol, and its 8-byte reports are forwarded unchanged once the device has
+confirmed the switch, so report-protocol bytes are never sent as keystrokes.
+Not forwarded:
+
+- boot keyboards that refuse `SET_PROTOCOL(BOOT)`;
+- keyboard collections on non-boot interfaces or behind report IDs,
+  including ones that share an interface with the mouse;
+- consumer (media) keys.
+
+Keyboard LED output reports from the PC are ignored.
 
 ## Interface 2: vendor configuration
 
@@ -102,10 +111,10 @@ GET:
 | 6 | u16 | attached mouse VID (0 if none) |
 | 8 | u16 | attached mouse PID |
 | 10 | u16 | mouse reports received in the last second |
-| 12 | u8 | mouse endpoint `bInterval` in ms (0 if unknown) |
+| 12 | u8 | reserved, always 0 |
 | 13 | u8 | board ID (see `firmware/boards/`) |
 | 14 | u32 | uptime in ms |
-| 18 | u32 | number of configuration saves (flash record sequence number) |
+| 18 | u32 | sequence number of the flash record loaded at boot or last saved (0 if none); goes up on every save |
 | 22 | char[16] | board name, NUL padded |
 
 ### Report 3: live counters (GET)
@@ -125,22 +134,48 @@ Lets the web tool show what the adapter is doing without a game.
 
 ## Flash storage
 
-The configuration lives in the last 4 KB sector of flash, so dragging a new
-UF2 onto the board keeps it. The sector holds 16 records of 256 bytes
-(one flash page), written in order so a save only programs a page; the
-sector is erased only when all 16 slots are used.
+The configuration lives in a pair of reserved 4 KB sectors at the top of
+flash, so dragging a new UF2 onto the board keeps it. The source of truth
+is `STORE_OFFSET` in `firmware/src/storage.c`.
+
+| Chip | Sectors | Addresses |
+|---|---|---|
+| RP2040 | the last two: flash size - 8 KB and - 4 KB | Pico 0x101FE000 / 0x101FF000, Feather RP2040 USB Host 0x107FE000 / 0x107FF000, RP2040-PiZero 0x10FFE000 / 0x10FFF000 |
+| RP2350 | the third- and second-to-last: flash size - 12 KB and - 8 KB | Pico 2 0x103FD000 / 0x103FE000, RP2350-USB-A 0x101FD000 / 0x101FE000 |
+
+RP2350 UF2s built with pico-sdk carry an absolute block at 0x10FFFF00
+(erratum RP2350-E10 workaround, picotool `--abs-block`) that makes the
+bootrom erase the last sector on every download, so on RP2350 nothing may
+be stored there.
+
+Each sector holds 16 records of 256 bytes (one flash page):
 
 | Offset | Type | Field |
 |---|---|---|
 | 0 | u32 | magic `0x534E4D4F` (`"OMNS"`) |
-| 4 | u32 | sequence number, increments on every save |
+| 4 | u32 | sequence number |
 | 8 | u8[63] | packed configuration, same layout as report 1 |
 | 71 | u8 | 0 |
 | 72 | u32 | CRC-32 (IEEE 802.3, the zlib one) of bytes 0-71 |
 | 76 | - | 0xFF padding to 256 |
 
-On boot the valid record with the highest sequence number wins; if there
-is none, factory defaults are used.
+A record is valid when its magic and CRC are correct, whatever its
+configuration version. Saving:
+
+- The new record's sequence number is one more than the highest of any
+  valid record in either sector, so a record written by older or newer
+  firmware never outranks a later save.
+- It goes into the first erased page after that newest record, in the same
+  sector, so a save normally only programs one page (about 1 ms).
+- When that sector is full, the other sector is erased (always, even if it
+  reads blank) and the record goes into its first page. The full sector is
+  kept until the next switch.
+
+The sector holding the newest record is never erased, so losing power
+during a save leaves the previous configuration loadable. On boot, the
+valid record with the highest sequence number whose configuration version
+the firmware understands wins (equal numbers: the later page in a sector);
+if there is none, factory defaults are used.
 
 ## On-device toggle
 
@@ -148,3 +183,4 @@ With the chord toggle flag set, holding left + right + middle for 3 seconds
 flips correction on or off (RAM only, a power cycle restores the saved
 state). The status LED shows the result: solid = correction on, off =
 bypass, slow blink = no mouse attached, three quick flashes = toggled.
+While the PC has the USB bus suspended the LED is dark.

@@ -19,9 +19,15 @@ app_t g_app;
 #define CHORD_BUTTONS 0x0007u  // left + right + middle
 #define CHORD_HOLD_US 3000000u
 
-// Accumulated output that has not been sent to the PC yet.
+// Accumulated output that has not been sent to the PC yet. sent_buttons is
+// what the PC last received, so a change it missed while suspended is still
+// reported after resume.
 static int32_t acc_x, acc_y, acc_wheel, acc_pan;
 static uint16_t cur_buttons, sent_buttons;
+static uint32_t rate_count;  // mouse reports in the current stats window
+
+// Keyboard passthrough: newest report from the mouse, and what the PC last received.
+static kb_event_t kb_cur, kb_sent;
 
 static uint32_t chord_start_us;
 static bool chord_armed = true;
@@ -98,7 +104,7 @@ static bool try_send_mouse(void) {
     return true;
 }
 
-static void chord_check(uint16_t buttons, uint32_t now) {
+static void chord_check(uint16_t buttons) {
     if (!(g_app.cfg.flags & OMNI_FLAG_CHORD_TOGGLE)) return;
     if ((buttons & CHORD_BUTTONS) != CHORD_BUTTONS) {
         chord_start_us = 0;
@@ -106,6 +112,9 @@ static void chord_check(uint16_t buttons, uint32_t now) {
         return;
     }
     if (!chord_armed) return;
+    // Core 0's clock rather than the event timestamp: chord_task() checks too,
+    // and a queued event can be stamped before chord_start_us.
+    uint32_t now = time_us_32();
     if (chord_start_us == 0) chord_start_us = now | 1;
     if ((uint32_t)(now - chord_start_us) >= CHORD_HOLD_US) {
         chord_armed = false;
@@ -124,27 +133,43 @@ static void apply_event(const mouse_event_t *ev) {
     cur_buttons = ev->buttons;
 
     g_app.reports++;
+    rate_count++;
     g_app.in_x += ev->dx;
     g_app.in_y += ev->dy;
     g_app.out_x += ox;
     g_app.out_y += oy;
     g_app.buttons = ev->buttons;
-    chord_check(ev->buttons, ev->t_us);
+    chord_check(ev->buttons);
+}
+
+// Mice report only on change (SET_IDLE 0), so nothing arrives while the
+// chord is held still: the hold time is checked from the loop as well.
+static void chord_task(void) {
+    if (tud_mounted() && !tud_suspended()) chord_check(cur_buttons);
 }
 
 static void mouse_task(void) {
     mouse_event_t ev;
 
-    if (!tud_mounted() || tud_suspended()) {
-        // Nobody is listening: drop motion, but a click wakes a sleeping PC.
-        bool click = false;
+    if (!tud_mounted()) {
+        // Not configured: drop motion. Once configured, the PC starts with
+        // every button released, so a button still held is sent then.
+        while (queue_try_remove(&g_mouse_queue, &ev)) cur_buttons = ev.buttons;
+        acc_x = acc_y = acc_wheel = acc_pan = 0;
+        sent_buttons = 0;
+        return;
+    }
+    if (tud_suspended()) {
+        // Nothing can be sent: drop motion but keep sent_buttons, so a button
+        // released (or still held) across the suspend is reported on resume.
+        // A new press wakes the PC.
+        bool press = false;
         while (queue_try_remove(&g_mouse_queue, &ev)) {
-            if (ev.buttons & ~cur_buttons) click = true;
+            if (ev.buttons & ~cur_buttons) press = true;
             cur_buttons = ev.buttons;
         }
-        if (click && tud_suspended()) tud_remote_wakeup();
+        if (press) tud_remote_wakeup();
         acc_x = acc_y = acc_wheel = acc_pan = 0;
-        sent_buttons = cur_buttons;
         return;
     }
 
@@ -161,29 +186,86 @@ static void mouse_task(void) {
     if (report_pending()) try_send_mouse();
 }
 
+// True if `now` holds a key or modifier that `before` did not.
+static bool kb_new_key(const uint8_t *now, const uint8_t *before) {
+    if (now[0] & ~before[0]) return true;
+    for (int i = 2; i < 8; i++) {
+        if (now[i] < 4) continue;  // none, or a rollover/error code
+        bool held = false;
+        for (int j = 2; j < 8; j++) held |= before[j] == now[i];
+        if (!held) return true;
+    }
+    return false;
+}
+
 static void keyboard_task(void) {
     kb_event_t ev;
     if (!tud_mounted()) {
-        while (queue_try_remove(&g_kb_queue, &ev)) {}
+        // Once configured, the PC starts with every key released.
+        while (queue_try_remove(&g_kb_queue, &ev)) kb_cur = ev;
+        memset(&kb_sent, 0, sizeof(kb_sent));
         return;
     }
     if (tud_suspended()) {
-        if (queue_try_remove(&g_kb_queue, &ev)) tud_remote_wakeup();
+        // Keep the newest state for after resume; only a new key wakes the PC.
+        bool press = false;
+        while (queue_try_remove(&g_kb_queue, &ev)) {
+            if (kb_new_key(ev.report, kb_cur.report)) press = true;
+            kb_cur = ev;
+        }
+        if (press) tud_remote_wakeup();
         return;
     }
     if (!tud_hid_n_ready(ITF_KEYBOARD)) return;
-    if (queue_try_remove(&g_kb_queue, &ev)) tud_hid_n_report(ITF_KEYBOARD, 0, ev.report, sizeof(ev.report));
+    // First bring the PC up to date (a change it missed while suspended, or a
+    // report that could not be sent), then forward queued reports one at a
+    // time so quick presses are not merged.
+    if (memcmp(&kb_cur, &kb_sent, sizeof(kb_cur)) == 0) {
+        if (!queue_try_remove(&g_kb_queue, &ev)) return;
+        kb_cur = ev;
+    }
+    if (tud_hid_n_report(ITF_KEYBOARD, 0, kb_cur.report, sizeof(kb_cur.report))) kb_sent = kb_cur;
+}
+
+// ------------------------------------------------------------------ suspend
+
+static bool mouse_power_cut;  // VBUS switched off for a suspend without remote wakeup
+
+static void mouse_power(bool on) {
+#if OMNI_VBUS_EN_PIN >= 0
+    gpio_put(OMNI_VBUS_EN_PIN, on ? OMNI_VBUS_EN_LEVEL : !OMNI_VBUS_EN_LEVEL);
+    mouse_power_cut = !on;
+#else
+    (void)on;
+#endif
+}
+
+// The PC is asleep. If it did not arm remote wakeup, a click cannot wake it,
+// so boards that can switch the mouse's VBUS power the mouse (sensor, RGB)
+// down until resume; it then re-enumerates like a fresh plug-in. With wakeup
+// armed the mouse stays powered so a click still wakes the PC. Stopping
+// PIO-USB's SOFs instead is not an option: pio_usb_host_stop() never returns
+// in the pinned Pico-PIO-USB.
+void tud_suspend_cb(bool remote_wakeup_en) {
+    if (!remote_wakeup_en) mouse_power(false);
+}
+
+void tud_resume_cb(void) { mouse_power(true); }
+
+// A bus reset ends a suspend too, and need not come with tud_resume_cb().
+static void power_task(void) {
+    if (mouse_power_cut && !tud_suspended()) mouse_power(true);
 }
 
 // ------------------------------------------------------------------ housekeeping
 
 static void stats_task(void) {
-    static uint32_t window_start, window_reports;
+    // Own counter: RESET_COUNTERS zeroes g_app.reports mid-window.
+    static uint32_t window_start;
     uint32_t now = time_us_32();
     if ((uint32_t)(now - window_start) >= 1000000u) {
-        uint32_t n = g_app.reports - window_reports;
-        g_app.reports_per_sec = (uint16_t)(n > 0xFFFF ? 0xFFFF : n);
-        window_reports = g_app.reports;
+        g_app.reports_per_sec = (uint16_t)(rate_count > 0xFFFF ? 0xFFFF : rate_count);
+        rate_count = 0;
         window_start = now;
     }
 }
@@ -242,10 +324,13 @@ int main(void) {
         tud_task();
         mouse_task();
         keyboard_task();
+        chord_task();
         stats_task();
-        led_task(!g_host.mouse_attached ? LED_NO_MOUSE
-                 : (g_app.cfg.flags & OMNI_FLAG_ENABLED) ? LED_ENABLED
-                                                         : LED_BYPASS);
+        power_task();
+        if (tud_suspended()) led_off();
+        else led_task(!g_host.mouse_attached ? LED_NO_MOUSE
+                      : (g_app.cfg.flags & OMNI_FLAG_ENABLED) ? LED_ENABLED
+                                                              : LED_BYPASS);
         reboot_task();
         watchdog_task();
     }

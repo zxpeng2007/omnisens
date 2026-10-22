@@ -114,14 +114,18 @@ without software (it does not change the saved setting).
   with the mouse model.
 * **Power.** The mouse is powered by the PC through the adapter. Very
   power-hungry RGB mice may need the Feather (fused boost converter) or a
-  powered hub. While the PC sleeps the status LED turns off; on the Feather
-  the mouse is also switched off if the PC has not enabled wake-on-click,
-  and comes back when the PC wakes.
+  powered hub.
+* **Sleep.** While the PC sleeps the status LED turns off. If the PC allows
+  the mouse to wake it, the adapter and mouse stay powered so a click can
+  wake it; this means a lit RGB mouse stays lit. On the Feather, if waking is
+  not allowed, the adapter also switches the mouse off and back on when the
+  PC wakes.
 * **Vendor software.** G Hub, Synapse, iCUE and similar tools cannot see the
   mouse through the adapter. Set DPI, polling rate, RGB and button mappings
   first, saved to the mouse's onboard memory, then put the adapter in
   between. On-mouse DPI buttons keep working, and because the gains are
   ratios they stay valid at any DPI.
-* **Keyboard interfaces.** Extra keyboard interfaces on the mouse (macro
-  keys) are forwarded as a boot keyboard. Media keys (consumer control) are
-  not forwarded.
+* **Keyboard interfaces.** Keys sent by the mouse's own keyboard interface
+  (buttons mapped to keys in onboard memory) are forwarded if that interface
+  supports the standard boot keyboard format, which almost all do. Media keys
+  (consumer control) and keyboards without boot support are not forwarded.

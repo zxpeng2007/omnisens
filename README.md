@@ -103,9 +103,10 @@ smoothly between directions (16 points by default).
   separates real directional bias from the range effect and random scatter.
 * **Being careful.** The tool only applies a correction when the pattern is
   statistically clear *and* replicates across halves of your data. It applies
-  70% of the measured correction by default, caps every value at ±15%, and
-  never changes your average sensitivity. A *tracking-safe* mode keeps
-  opposite directions equal, so strafe tracking stays consistent.
+  70% of the measured correction by default, changes no direction by more
+  than ±15% per calibration, and never changes your average sensitivity. A
+  *tracking-safe* mode only makes corrections that are equal in opposite
+  directions, so strafe tracking stays consistent.
 * **Checking it.** *Refine* re-measures with the profile active.
   *Blind A/B* alternates blocks with the correction on and off without telling
   you which is which, then shows whether your flicks actually improved.

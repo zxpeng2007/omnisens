@@ -9,7 +9,9 @@ export const SEGMENT_DEFAULTS = {
   onsetFrac: 0.05,        // onset/stop threshold: 5% of peak speed (Fradet et al. 2008)
   vStartDegPerSec: 8,     // absolute onset floor when degPerCount is known (Boudaoud et al. 2022)
   primaryPeakFrac: 0.5,   // the primary submovement is the first speed peak above 50% of the max
-  persistMs: 40,          // a submovement event must hold for 40 ms
+  persistMs: 40,          // a velocity reversal or a stop must hold for 40 ms
+  persistAccelMs: 12,     // re-acceleration and jerk events only 12 ms: a correction that
+                          // overlaps the primary's tail flips their sign only briefly
   carryoverFrac: 0.2,     // reject if already moving at spawn
   minRtMs: 100,           // anticipation
   maxRtMs: 1000,          // lapse
@@ -26,13 +28,13 @@ export const SEGMENT_DEFAULTS = {
 export const FIT_DEFAULTS = {
   nPoints: 16,
   strength: 0.7,          // lambda: partial correction
-  symmetric: false,       // even harmonics only: g(t) = g(t + 180), tracking-safe
-  maxLogGain: 0.15,       // |ln g| <= 0.15 (about +-15%)
+  symmetric: false,       // even harmonics only: the correction is the same at t and t + 180 (tracking-safe)
+  maxLogGain: 0.15,       // each refinement changes ln g by at most 0.15 (about +-15%)
   bootstrap: 200,
   seed: 12345,
   force: false,           // apply even when the evidence gate fails
-  alpha: 0.01,            // Wald test level for the direction terms
-  minReliability: 0.5,    // split-half (Spearman-Brown) reliability
+  alpha: 0.01,            // level of the F test on all direction terms of the largest model
+  minReplication: 0.5,    // two-fold replication: b_A.b_B / max(|b_A|^2, |b_B|^2) must exceed this
   minTrials: 60,
   priorTau: 0.03,         // Gaussian prior SD for a single harmonic (K = 1)
 };
@@ -47,6 +49,9 @@ export const FIT_DEFAULTS = {
  *   req: [rx, ry],           // output counts needed from aim-at-spawn to the target centre (HID axes)
  *   t: number[],             // ms since target spawn, increasing; t[0] = 0
  *   x: number[], y: number[], // cumulative output counts since spawn (x[0] = y[0] = 0)
+ *   endMs?: number,          // click or timeout time; the series must reach it (a held
+ *                            // sample is added here when it does not, e.g. older sessions)
+ *   hitMs?: number | null,   // click time, used when endMs is missing
  *   applied: null | { gains, linear, rotationCdeg }  // adapter profile while recording
  *   degPerCount?: number     // optional, enables the absolute onset floor
  * }
@@ -54,8 +59,18 @@ export const FIT_DEFAULTS = {
 export function analyzeTrial(trial, opts = {}) {
   const o = { ...SEGMENT_DEFAULTS, ...opts };
   const fail = (reason) => ({ ok: false, reason, isReturn: trial?.kind === 'return' });
-  const { t, x, y } = trial || {};
-  if (!t || t.length < 6 || x.length !== t.length || y.length !== t.length) return fail('too-few-samples');
+  let { t, x, y } = trial || {};
+  if (!t || !x || !y || x.length !== t.length || y.length !== t.length) return fail('too-few-samples');
+  // A mouse sends nothing while still, so without a sample at the click the
+  // series stops mid-deceleration and a flick that landed in one movement
+  // would never seem to end. Hold the last position until the click.
+  const endMs = trial.endMs ?? trial.hitMs;
+  if (t.length && Number.isFinite(endMs) && endMs > t[t.length - 1]) {
+    t = [...t, endMs];
+    x = [...x, x[x.length - 1]];
+    y = [...y, y[y.length - 1]];
+  }
+  if (t.length < 6) return fail('too-few-samples');
   const reqLen = Math.hypot(trial.req[0], trial.req[1]);
   if (!(reqLen >= o.minRequiredCounts)) return fail('target-too-close');
 
@@ -106,16 +121,16 @@ export function analyzeTrial(trial, opts = {}) {
   // End of the primary submovement: first event after peak deceleration that
   // persists (Meyer et al. 1988; Roberts et al. 2024): velocity reversal (type 1),
   // re-acceleration (type 2), braking discontinuity in jerk (type 3), or a stop.
-  const holds = (from, pred) => {
-    for (let k = from; k <= Math.min(T, from + o.persistMs - 1); k++) if (!pred(k)) return false;
+  const holds = (from, ms, pred) => {
+    for (let k = from; k <= Math.min(T, from + ms - 1); k++) if (!pred(k)) return false;
     return true;
   };
   let iEnd = -1, endType = '';
   for (let i = iDec + 1; i <= T && iEnd < 0; i++) {
-    if (va[i - 1] > 0 && va[i] <= 0 && holds(i, (k) => va[k] <= 0)) { iEnd = i; endType = 'reversal'; }
-    else if (aa[i - 1] < 0 && aa[i] >= 0 && holds(i, (k) => aa[k] >= 0)) { iEnd = i; endType = 'reacceleration'; }
-    else if (ja[i - 1] > 0 && ja[i] <= 0 && holds(i, (k) => ja[k] <= 0)) { iEnd = i; endType = 'jerk'; }
-    else if (sp[i] < stopLevel && holds(i, (k) => sp[k] < stopLevel)) { iEnd = i; endType = 'stop'; }
+    if (va[i - 1] > 0 && va[i] <= 0 && holds(i, o.persistMs, (k) => va[k] <= 0)) { iEnd = i; endType = 'reversal'; }
+    else if (aa[i - 1] < 0 && aa[i] >= 0 && holds(i, o.persistAccelMs, (k) => aa[k] >= 0)) { iEnd = i; endType = 'reacceleration'; }
+    else if (ja[i - 1] > 0 && ja[i] <= 0 && holds(i, o.persistAccelMs, (k) => ja[k] <= 0)) { iEnd = i; endType = 'jerk'; }
+    else if (sp[i] < stopLevel && holds(i, o.persistMs, (k) => sp[k] < stopLevel)) { iEnd = i; endType = 'stop'; }
   }
   if (iEnd < 0) return fail('no-clear-end');
   const dur = iEnd - iOn;
@@ -163,7 +178,7 @@ export function analyzeTrial(trial, opts = {}) {
     onsetMs: iOn,
     primaryMs: dur,
     peakSpeed: peak,    // counts/ms
-    endType,
+    endType,            // 'reversal' | 'reacceleration' | 'jerk' | 'stop'
     ampDeg: trial.ampDeg,
   };
 }
@@ -221,13 +236,15 @@ const wrap360 = (a) => ((a % 360) + 360) % 360;
 // ---------------------------------------------------------------- fitting
 
 const HARMONIC_SETS = { full: [[], [1], [1, 2], [1, 2, 3]], symmetric: [[], [2]] };
+const END_TYPES = ['reversal', 'reacceleration', 'jerk', 'stop'];
 const fitCache = new WeakMap();
 
 /**
  * Fit a smooth periodic bias curve to analysed flicks and turn it into gains.
  * results: analyzeTrial() outputs (failed ones are counted, then skipped).
  * current: { gains, linear } the profile the user runs now, for comparison (null = flat).
- * The correction is applied on top of the profile that was active while recording.
+ * The correction is applied on top of the profile that was active while recording;
+ * when it is not applied the gains are that profile, unchanged.
  */
 export function fitProfile(results, opts = {}, current = null) {
   const o = { ...FIT_DEFAULTS, ...opts };
@@ -250,11 +267,8 @@ export function fitProfile(results, opts = {}, current = null) {
 
   const data = prepare(ok);
   const base = data.base;
-  const baseLog = (th) => {
-    const g = (a) => (base ? Math.log(gainAt(base.gains, a, !!base.linear)) : 0);
-    return o.symmetric ? 0.5 * (g(th) + g(th + 180)) : g(th);
-  };
-  const curGain = (th) => (current ? gainAt(current.gains, th, !!current.linear) : base ? gainAt(base.gains, th, !!base.linear) : 1);
+  const baseAt = (th) => curGainBase(base, th);
+  const curGain = (th) => (current ? gainAt(current.gains, th, !!current.linear) : baseAt(th));
 
   // Fits depend only on the data and the harmonic family; cache them so
   // strength / resolution / force changes in the UI are instant.
@@ -265,7 +279,7 @@ export function fitProfile(results, opts = {}, current = null) {
   if (!fits) {
     const sets = o.symmetric ? HARMONIC_SETS.symmetric : HARMONIC_SETS.full;
     const main = selectModel(data, sets, o);
-    main.reliability = main.harmonics.length ? splitHalf(data, main.harmonics) : 0;
+    main.reliability = main.harmonics.length ? replication(data, main.harmonics, main.scale) : 0;
     const boots = [];
     const rng = mulberry32(o.seed);
     for (let b = 0; b < o.bootstrap; b++) {
@@ -277,30 +291,32 @@ export function fitProfile(results, opts = {}, current = null) {
   }
   const { main, boots } = fits;
 
-  const passed = main.harmonics.length > 0 && main.p < o.alpha && main.reliability >= o.minReliability;
+  const passed = main.harmonics.length > 0 && main.p < o.alpha && main.reliability > o.minReplication;
   const apply = passed || o.force;
   out.ok = true;
   out.K = main.harmonics.length ? Math.max(...main.harmonics) : 0;
   out.harmonics = main.harmonics;
-  out.evidence = { wald: main.wald, df: main.df, p: main.p, reliability: main.reliability, passed };
+  out.evidence = {
+    wald: main.wald, df: main.df, df2: main.df2, p: main.p,
+    reliability: main.reliability, replicationThreshold: o.minReplication, passed,
+  };
   out.shrink = main.shrink;
   out.applied = apply;
   out.sigma = main.sigma;
   out.rangeSlope = main.beta[1];
   out.returnOffset = data.hasReturn ? main.beta[2] : null;
   out.overallRatio = Math.exp(median(ok.map((r) => Math.log(r.ratio))));
+  out.endTypes = endTypeCounts(ok);
 
   const gainsFor = (fit, dirs) => {
-    // Bootstrap refits use the Wald gate only (the split-half check is too costly per resample).
+    // Bootstrap refits use the F test only (the replication check is too costly per resample).
     const doApply = fit === main ? apply : o.force || (fit.harmonics.length > 0 && fit.p < o.alpha);
-    let lg = dirs.map((d) => baseLog(d) - (doApply ? o.strength * curveValue(fit, d, true) : 0));
-    // Keep the overall sensitivity: mean log gain over the circle equals the base's.
-    const target = mean(dirs.map(baseLog));
-    for (let pass = 0; pass < 2; pass++) {
-      const shift = target - mean(lg);
-      lg = lg.map((v) => Math.max(-o.maxLogGain, Math.min(o.maxLogGain, v + shift)));
-    }
-    return lg.map(Math.exp);
+    if (!doApply || !fit.harmonics.length) return dirs.map(baseAt);
+    // Only the change is limited, never the base: it averages zero in log
+    // space (overall sensitivity stays the base's) and is capped per direction.
+    const delta = dirs.map((d) => -o.strength * curveValue(fit, d, true));
+    const shift = centringShift(delta, o.maxLogGain);
+    return dirs.map((d, k) => baseAt(d) * Math.exp(clampAbs(delta[k] + shift, o.maxLogGain)));
   };
 
   const dirs = Array.from({ length: o.nPoints }, (_, k) => (k * 360) / o.nPoints);
@@ -309,7 +325,7 @@ export function fitProfile(results, opts = {}, current = null) {
   out.directions = dirs;
   out.gains = gainsFor(main, dirs);
   out.gains8 = gainsFor(main, dirs8);
-  out.baseGains8 = dirs8.map((d) => curGainBase(base, d));
+  out.baseGains8 = dirs8.map(baseAt);
   out.currentGains8 = dirs8.map(curGain);
   out.bias8 = dirs8.map((d) => 100 * (Math.exp(curveValue(main, d, false)) - 1));
 
@@ -321,7 +337,12 @@ export function fitProfile(results, opts = {}, current = null) {
 
   out.bins8 = dirs8.map((d) => {
     const inBin = ok.filter((r) => angDist(r.theta, d) <= 22.5);
-    return { theta: d, n: inBin.length, medianRatio: inBin.length ? median(inBin.map((r) => r.ratio)) : null };
+    return {
+      theta: d,
+      n: inBin.length,
+      medianRatio: inBin.length ? median(inBin.map((r) => r.ratio)) : null,
+      endTypes: endTypeCounts(inBin),
+    };
   });
 
   out.curve = [];
@@ -339,7 +360,7 @@ export function fitProfile(results, opts = {}, current = null) {
   if (!passed) {
     out.warnings.push(main.harmonics.length === 0
       ? 'No directional pattern stood out from normal flick-to-flick variation.'
-      : `The directional pattern is not reliable enough yet (p = ${fmtP(main.p)}, split-half reliability ${main.reliability.toFixed(2)}; needs p < ${o.alpha} and >= ${o.minReliability}).`);
+      : `The directional pattern is not reliable enough yet (p = ${fmtP(main.p)}, needs < ${o.alpha}; replication between two halves of your flicks ${main.reliability.toFixed(2)}, needs > ${o.minReplication}).`);
   }
   out.bins8.forEach((b) => {
     if (b.n < 12) out.warnings.push(`Only ${b.n} usable flicks near ${b.theta}°.`);
@@ -352,6 +373,27 @@ export function fitProfile(results, opts = {}, current = null) {
 function curGainBase(base, d) { return base ? gainAt(base.gains, d, !!base.linear) : 1; }
 
 function fmtP(p) { return p < 0.001 ? '< 0.001' : p.toFixed(3); }
+
+const clampAbs = (v, m) => Math.max(-m, Math.min(m, v));
+
+/** Shift s so that mean(clamp(delta + s)) = 0: the clamp must not move the overall level. */
+function centringShift(delta, m) {
+  let s = -mean(delta);
+  if (delta.every((v) => Math.abs(v + s) <= m)) return s;
+  // mean(clamp(delta + s)) rises monotonically with s; bisect for its zero.
+  let lo = -m - Math.max(...delta), hi = m - Math.min(...delta);
+  for (let it = 0; it < 100; it++) {
+    s = (lo + hi) / 2;
+    if (mean(delta.map((v) => clampAbs(v + s, m))) < 0) lo = s; else hi = s;
+  }
+  return s;
+}
+
+function endTypeCounts(rs) {
+  const c = Object.fromEntries(END_TYPES.map((k) => [k, 0]));
+  for (const r of rs) if (r.endType in c) c[r.endType]++;
+  return c;
+}
 
 /** Direction-dependent part of a fit at angle th (deg); shrunk = with shrinkage applied. */
 function curveValue(fit, th, shrunk) {
@@ -435,120 +477,238 @@ function designMatrix(d, harmonics) {
   return { X, p, dirStart: 2 + (d.hasReturn ? 1 : 0) };
 }
 
-/** Chooses the harmonic set by BIC, then computes the Wald test and shrinkage for it. */
+// A fresh object each time: fitProfile adds fields to the main fit.
+const noFit = () => ({ harmonics: [], beta: [0, 0, 0], dirBeta: [], dirShrunk: [], wald: 0, df: 0, df2: 0, p: 1, shrink: 0, sigma: NaN, scale: null });
+
+/**
+ * Evidence first, then shape. The evidence is an F test on every direction
+ * term of the largest candidate model, so its level does not depend on the
+ * model choice. The harmonic set is then chosen by a robust BIC; once the
+ * test has rejected "no directional effect", the empty set is not a candidate.
+ */
 function selectModel(d, sets, o) {
-  let best = null;
+  const largest = sets[sets.length - 1];
+  // One noise scale per distance band, shared by every candidate: comparing
+  // losses is only meaningful when they are measured on the same yardstick.
+  const scale = pilotScale(d, largest);
+  if (!scale) return noFit();
+  const fits = [];
   for (const harmonics of sets) {
-    const { X, p, dirStart } = designMatrix(d, harmonics);
-    const f = robustFit(X, d.y, d.n, p, d.stratum);
-    if (!f) continue;
-    // Raw (not standardised) residual variance: each model re-estimates its own scale.
-    const bic = d.n * Math.log(f.rawSigma2) + p * Math.log(d.n);
-    if (!best || bic < best.bic) best = { harmonics, bic, p, dirStart, ...f };
+    const dm = designMatrix(d, harmonics);
+    const f = robustFit(dm.X, d.y, d.n, dm.p, d.stratum, scale);
+    if (f) fits.push({ harmonics, ...dm, ...f });
   }
-  if (!best) return { harmonics: [], beta: [0, 0, 0], dirBeta: [], dirShrunk: [], wald: 0, df: 0, p: 1, shrink: 0, sigma: NaN };
+  const top = fits.find((f) => f.harmonics === largest);
+  const topCov = top && sandwich(top.X, top.resid, d.n, top.p, d.stratum, scale);
+  if (!topCov) return noFit();
+
+  // Robust BIC (Machado 1993): 2 * sum rho(r / s) + p ln n, with the loss scaled
+  // by mean(psi') / mean(psi^2) so that loss differences are chi-square, as in
+  // the robust likelihood-ratio test.
+  const lr = topCov.lrScale;
+  for (const f of fits) f.bic = 2 * lr * f.rho + f.p * Math.log(d.n);
+
+  // The sandwich is itself noisy (its effective degrees of freedom are well
+  // below n - p), and a noisy covariance inflates a multi-df Wald statistic.
+  // Hotelling's T^2 scaling with the sandwich's effective df keeps the test at its level.
+  const ndTop = 2 * largest.length;
+  const test = waldTest(top.beta.slice(top.dirStart, top.dirStart + ndTop), topCov.cov, top.p, top.dirStart);
+  // Floor at q: below it the Hotelling scaling is undefined (nu = 0 would give p = 0).
+  const nu = Math.min(d.n - top.p, Math.max(ndTop, sandwichDf(top.X, top.resid, d.n, top.p, d.stratum, scale, top.dirStart, ndTop)));
+  const df2 = Math.max(1, nu - ndTop + 1);
+  const pval = test.ok ? fSurvival((test.wald * df2) / (nu * ndTop), ndTop, df2) : 1;
+  const pool = pval < o.alpha ? fits.filter((f) => f.harmonics.length) : fits;
+  const best = pool.reduce((a, b) => (b.bic < a.bic ? b : a));
 
   const nd = 2 * best.harmonics.length;
   const dirBeta = best.beta.slice(best.dirStart, best.dirStart + nd);
-  let wald = 0, pval = 1, shrink = 0, dirShrunk = dirBeta.map(() => 0);
+  let shrink = 0, dirShrunk = dirBeta.map(() => 0);
   if (nd > 0) {
-    const V = submatrix(best.cov, best.p, best.dirStart, nd);
-    const Vinv = invert(V, nd);
-    if (Vinv) {
-      for (let a = 0; a < nd; a++) for (let b = 0; b < nd; b++) wald += dirBeta[a] * Vinv[a * nd + b] * dirBeta[b];
-      pval = chi2SurvivalEven(wald, nd);
-    }
-    if (nd > 2) {
+    const cov = best === top ? topCov.cov : sandwich(best.X, best.resid, d.n, best.p, d.stratum, scale)?.cov;
+    const own = cov ? waldTest(dirBeta, cov, best.p, best.dirStart) : { ok: false };
+    if (own.ok && nd > 2) {
       // Positive-part James-Stein toward "no directional effect".
-      shrink = wald > 0 ? Math.max(0, 1 - (nd - 2) / wald) : 0;
+      shrink = own.wald > 0 ? Math.max(0, 1 - (nd - 2) / own.wald) : 0;
       dirShrunk = dirBeta.map((v) => v * shrink);
-    } else {
+    } else if (own.ok) {
       // One harmonic: Gaussian prior with SD priorTau on each coefficient.
       const t2 = o.priorTau * o.priorTau;
-      const f = dirBeta.map((_, j) => t2 / (t2 + V[j * nd + j]));
+      const f = dirBeta.map((_, j) => t2 / (t2 + own.V[j * nd + j]));
       dirShrunk = dirBeta.map((v, j) => v * f[j]);
       shrink = (f[0] + f[1]) / 2;
     }
   }
   return {
     harmonics: best.harmonics, beta: best.beta, dirBeta, dirShrunk,
-    wald, df: nd, p: pval, shrink, sigma: Math.sqrt(best.rawSigma2),
+    wald: test.ok ? test.wald : 0, df: ndTop, df2, p: pval, shrink,
+    sigma: Math.sqrt(best.rawSigma2), scale,
   };
 }
 
-/** Split-half reliability of the direction curve, Spearman-Brown corrected. */
-function splitHalf(d, harmonics) {
-  // Alternate within each (direction x distance) cell so both halves cover every direction.
-  const halves = [[], []];
-  for (const members of cells(d).values()) members.forEach((i, j) => halves[j % 2].push(i));
-  halves.forEach((h) => h.sort((a, b) => a - b));
-  const curves = halves.map((idx) => {
-    const s = subset(d, idx);
-    const { X, p, dirStart } = designMatrix(s, harmonics);
-    const f = robustFit(X, s.y, s.n, p, s.stratum);
-    if (!f) return null;
-    const coefs = f.beta.slice(dirStart);
-    return Array.from({ length: 32 }, (_, k) => curveValue({ harmonics, dirBeta: coefs }, k * 11.25, false));
-  });
-  if (!curves[0] || !curves[1]) return 0;
-  const r = pearson(curves[0], curves[1]);
-  return r <= -0.999 ? -1 : (2 * r) / (1 + r);
+/** b' V^-1 b for the direction block of a covariance matrix. */
+function waldTest(b, cov, p, start) {
+  const nd = b.length;
+  const V = submatrix(cov, p, start, nd);
+  const Vinv = invert(V, nd);
+  if (!Vinv) return { ok: false };
+  let wald = 0;
+  for (let a = 0; a < nd; a++) for (let c = 0; c < nd; c++) wald += b[a] * Vinv[a * nd + c] * b[c];
+  return { ok: true, wald, V };
 }
 
 /**
- * M-estimation by IRLS: OLS start, Huber (t = 1.345) with per-stratum MAD scale,
- * then Tukey bisquare (c = 4.685) with that scale held fixed.
- * Returns beta, an approximate covariance, and weighted residual variances.
+ * Two-fold replication of the direction curve. The flicks are halved within
+ * every (direction x distance) cell, out and return flicks separately, taking
+ * every other one in recording order (in effect every other round). One joint
+ * fit shares the mean, range and return terms and gives each half its own
+ * direction coefficients b_A, b_B. Using one half's curve to correct the other
+ * half only helps if b_A.b_B > |b_A|^2 / 2 (and vice versa), so this returns
+ * b_A.b_B / max(|b_A|^2, |b_B|^2), which must exceed 0.5. Unlike a correlation
+ * it also fails when the halves agree on the shape but not on the size.
  */
-function robustFit(X, y, n, p, stratum) {
-  const w = new Float64Array(n).fill(1);
-  let beta = wls(X, y, w, n, p);
-  if (!beta) return null;
-  let resid = residuals(X, y, beta, n, p);
-  let scale = stratumScale(resid, stratum, w);
-
-  const irls = (psiWeight) => {
-    for (let iter = 0; iter < 50; iter++) {
-      for (let i = 0; i < n; i++) {
-        const s = scale[stratum[i]];
-        w[i] = psiWeight(resid[i] / s) / (s * s);
-      }
-      const next = wls(X, y, w, n, p);
-      if (!next) return false;
-      let change = 0, size = 0;
-      for (let k = 0; k < p; k++) { change = Math.max(change, Math.abs(next[k] - beta[k])); size = Math.max(size, Math.abs(next[k])); }
-      beta = next;
-      resid = residuals(X, y, beta, n, p);
-      if (change <= 1e-6 * Math.max(1, size)) break;
-    }
-    return true;
-  };
-  const huber = (z) => (Math.abs(z) <= 1.345 ? 1 : 1.345 / Math.abs(z));
-  const bisquare = (z) => { const u = z / 4.685; return Math.abs(u) < 1 ? (1 - u * u) ** 2 : 0; };
-  if (!irls(huber)) return null;
-  scale = stratumScale(resid, stratum, null);
-  if (!irls(bisquare)) return null;
-
-  // Standardised weighted residual variance (about 1 for a good model) for BIC and covariance.
-  let num = 0, den = 0, raw = 0, rawDen = 0;
-  for (let i = 0; i < n; i++) {
-    const s = scale[stratum[i]], rw = bisquare(resid[i] / s);
-    num += rw * (resid[i] / s) ** 2; den += rw;
-    raw += rw * resid[i] ** 2; rawDen += rw;
+function replication(d, harmonics, scale) {
+  const half = new Uint8Array(d.n), seen = new Map();
+  for (let i = 0; i < d.n; i++) {
+    const k = (d.dirBin[i] * 3 + d.stratum[i]) * 2 + d.ret[i];
+    const j = seen.get(k) || 0;
+    half[i] = j % 2;
+    seen.set(k, j + 1);
   }
-  const sigma2 = Math.max(1e-12, num / Math.max(1, den));
-  const A = normalMatrix(X, w, n, p);
-  const Ainv = invert(A, p);
-  if (!Ainv) return null;
-  const phi = num / Math.max(1, den - p);
-  return { beta, cov: Ainv.map((v) => v * phi), sigma2, rawSigma2: raw / Math.max(1, rawDen) };
+  const { X: X0, p: p0, dirStart } = designMatrix(d, harmonics);
+  const nd = p0 - dirStart, p = p0 + nd;
+  const X = new Float64Array(d.n * p);
+  for (let i = 0; i < d.n; i++) {
+    for (let c = 0; c < dirStart; c++) X[i * p + c] = X0[i * p0 + c];
+    const at = i * p + dirStart + half[i] * nd;
+    for (let c = 0; c < nd; c++) X[at + c] = X0[i * p0 + dirStart + c];
+  }
+  const f = robustFit(X, d.y, d.n, p, d.stratum, scale);
+  if (!f) return 0;
+  const a = f.beta.slice(dirStart, dirStart + nd), b = f.beta.slice(dirStart + nd, p);
+  const m = Math.max(dot(a, a), dot(b, b));
+  return m > 0 ? dot(a, b) / m : 0;
 }
 
-function stratumScale(resid, stratum, w) {
+const HUBER_K = 1.345, BISQUARE_C = 4.685;
+const huberWeight = (z) => (Math.abs(z) <= HUBER_K ? 1 : HUBER_K / Math.abs(z));
+const bisquareWeight = (z) => { const u = z / BISQUARE_C; return Math.abs(u) < 1 ? (1 - u * u) ** 2 : 0; };
+/** Bisquare loss, scaled so that rho(z) is about z^2 / 2 near 0. */
+const bisquareRho = (z) => {
+  const t = (z / BISQUARE_C) ** 2;
+  return t < 1 ? ((BISQUARE_C * BISQUARE_C) / 6) * (1 - (1 - t) ** 3) : (BISQUARE_C * BISQUARE_C) / 6;
+};
+
+/** IRLS at a fixed per-stratum scale, starting from beta. Returns { beta, resid } or null. */
+function irls(X, y, n, p, stratum, scale, weight, beta) {
+  const w = new Float64Array(n);
+  let resid = residuals(X, y, beta, n, p);
+  for (let iter = 0; iter < 50; iter++) {
+    for (let i = 0; i < n; i++) {
+      const s = scale[stratum[i]];
+      w[i] = weight(resid[i] / s) / (s * s);
+    }
+    const next = wls(X, y, w, n, p);
+    if (!next) return null;
+    let change = 0, size = 0;
+    for (let k = 0; k < p; k++) { change = Math.max(change, Math.abs(next[k] - beta[k])); size = Math.max(size, Math.abs(next[k])); }
+    beta = next;
+    resid = residuals(X, y, beta, n, p);
+    if (change <= 1e-6 * Math.max(1, size)) break;
+  }
+  return { beta, resid };
+}
+
+/** Per-stratum scale: MAD of the residuals of a Huber fit (OLS start, OLS-residual MAD). */
+function pilotScale(d, harmonics) {
+  const { X, p } = designMatrix(d, harmonics);
+  const beta = wls(X, d.y, new Float64Array(d.n).fill(1), d.n, p);
+  if (!beta) return null;
+  const s0 = stratumScale(residuals(X, d.y, beta, d.n, p), d.stratum);
+  const h = irls(X, d.y, d.n, p, d.stratum, s0, huberWeight, beta);
+  return h ? stratumScale(h.resid, d.stratum) : null;
+}
+
+/**
+ * M-estimate at a fixed per-stratum scale: OLS start, Huber (k = 1.345),
+ * then Tukey bisquare (c = 4.685). Returns beta, residuals, the summed
+ * bisquare loss (for the robust BIC) and a weighted residual variance in log
+ * units (for display).
+ */
+function robustFit(X, y, n, p, stratum, scale) {
+  const beta0 = wls(X, y, new Float64Array(n).fill(1), n, p);
+  if (!beta0) return null;
+  const h = irls(X, y, n, p, stratum, scale, huberWeight, beta0);
+  const b = h && irls(X, y, n, p, stratum, scale, bisquareWeight, h.beta);
+  if (!b) return null;
+  let rho = 0, raw = 0, rawDen = 0;
+  for (let i = 0; i < n; i++) {
+    const u = b.resid[i] / scale[stratum[i]], rw = bisquareWeight(u);
+    rho += bisquareRho(u);
+    raw += rw * b.resid[i] ** 2; rawDen += rw;
+  }
+  return { beta: b.beta, resid: b.resid, rho, rawSigma2: raw / Math.max(1, rawDen) };
+}
+
+/**
+ * Covariance of a bisquare M-estimate: the sandwich B^-1 M B^-1 n / (n - p)
+ * with B = X' diag(psi'(u) / s^2) X and M = X' diag(psi(u)^2 / s^2) X
+ * (Huber 1981). psi' < 0 for |u| > 2.1, so B can fail to be positive
+ * definite with many outliers; then Huber's form K^2 [sum psi^2 / (n - p)] /
+ * mean(psi')^2 (X' S^-2 X)^-1 is used. Also returns mean(psi') / mean(psi^2).
+ */
+function sandwich(X, resid, n, p, stratum, scale) {
+  const wb = new Float64Array(n), wm = new Float64Array(n), ws = new Float64Array(n);
+  let sd = 0, sd2 = 0, sp2 = 0;
+  for (let i = 0; i < n; i++) {
+    const s = scale[stratum[i]], u = resid[i] / s, t = (u / BISQUARE_C) ** 2;
+    const psi = t < 1 ? u * (1 - t) ** 2 : 0, dpsi = t < 1 ? (1 - t) * (1 - 5 * t) : 0;
+    wb[i] = dpsi / (s * s); wm[i] = (psi * psi) / (s * s); ws[i] = 1 / (s * s);
+    sd += dpsi; sd2 += dpsi * dpsi; sp2 += psi * psi;
+  }
+  if (!(sd > 0 && sp2 > 0) || n <= p) return null;
+  const lrScale = sd / sp2;
+  const B = normalMatrix(X, wb, n, p);
+  const Binv = positiveDefinite(B, p) ? invert(B, p) : null;
+  if (Binv) {
+    const M = normalMatrix(X, wm, n, p);
+    const cov = matMul(matMul(Binv, M, p), Binv, p).map((v) => (v * n) / (n - p));
+    return { cov, lrScale };
+  }
+  const md = sd / n, K = 1 + (p / n) * (sd2 / n - md * md) / (md * md);
+  const inv = invert(normalMatrix(X, ws, n, p), p);
+  if (!inv) return null;
+  const f = (K * K * (sp2 / (n - p))) / (md * md);
+  return { cov: inv.map((v) => v * f), lrScale };
+}
+
+/**
+ * Effective degrees of freedom of the sandwich variance (Satterthwaite), by the
+ * delta method on V_jj ~ sum(m_i) / sum(b_i)^2 with m_i = psi^2 x_ij^2 / s^2 and
+ * b_i = psi' x_ij^2 / s^2 (the direction columns are nearly orthogonal), averaged
+ * over the k columns from start: nu = 2 / CV^2(V_jj).
+ */
+function sandwichDf(X, resid, n, p, stratum, scale, start, k) {
+  let sum = 0;
+  for (let j = start; j < start + k; j++) {
+    let sm = 0, sb = 0, smm = 0, sbb = 0, smb = 0;
+    for (let i = 0; i < n; i++) {
+      const s = scale[stratum[i]], u = resid[i] / s, t = (u / BISQUARE_C) ** 2;
+      const x2 = (X[i * p + j] / s) ** 2;
+      const m = t < 1 ? x2 * (u * (1 - t) ** 2) ** 2 : 0, b = t < 1 ? x2 * (1 - t) * (1 - 5 * t) : 0;
+      sm += m; sb += b; smm += m * m; sbb += b * b; smb += m * b;
+    }
+    // Sums of n roughly independent terms: Var(sum) = n var(term).
+    const vm = smm - (sm * sm) / n, vb = sbb - (sb * sb) / n, cmb = smb - (sm * sb) / n;
+    const cv2 = vm / (sm * sm) + (4 * vb) / (sb * sb) - (4 * cmb) / (sm * sb);
+    sum += cv2 > 0 ? 2 / cv2 : n;
+  }
+  return sum / k;
+}
+
+function stratumScale(resid, stratum) {
   const groups = [[], [], []];
-  for (let i = 0; i < resid.length; i++) if (!w || w[i] > 0) groups[stratum[i]].push(resid[i]);
-  const all = [...resid];
-  const fallback = Math.max(1e-3, mad(all) / 0.6745);
+  for (let i = 0; i < resid.length; i++) groups[stratum[i]].push(resid[i]);
+  const fallback = Math.max(1e-3, mad([...resid]) / 0.6745);
   return groups.map((g) => (g.length >= 8 ? Math.max(1e-3, mad(g) / 0.6745) : fallback));
 }
 
@@ -595,6 +755,32 @@ function submatrix(M, p, start, k) {
   const S = new Float64Array(k * k);
   for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) S[a * k + b] = M[(start + a) * p + start + b];
   return S;
+}
+
+function matMul(A, B, p) {
+  const C = new Float64Array(p * p);
+  for (let i = 0; i < p; i++) for (let k = 0; k < p; k++) {
+    const a = A[i * p + k];
+    if (a !== 0) for (let j = 0; j < p; j++) C[i * p + j] += a * B[k * p + j];
+  }
+  return C;
+}
+
+/** Cholesky test: true if the symmetric matrix is (numerically) positive definite. */
+function positiveDefinite(A, p) {
+  const L = new Float64Array(p * p);
+  for (let j = 0; j < p; j++) {
+    let s = A[j * p + j];
+    for (let k = 0; k < j; k++) s -= L[j * p + k] ** 2;
+    if (!(s > 1e-12 * Math.max(1, Math.abs(A[j * p + j])))) return false;
+    L[j * p + j] = Math.sqrt(s);
+    for (let i = j + 1; i < p; i++) {
+      let v = A[i * p + j];
+      for (let k = 0; k < j; k++) v -= L[i * p + k] * L[j * p + k];
+      L[i * p + j] = v / L[j * p + j];
+    }
+  }
+  return true;
 }
 
 /** Gaussian elimination with partial pivoting on a p x p system; null if singular. */
@@ -644,6 +830,47 @@ export function chi2SurvivalEven(x, df) {
   return Math.min(1, Math.exp(-x / 2) * sum);
 }
 
+/** P(F(d1, d2) > f), via the regularised incomplete beta function. */
+export function fSurvival(f, d1, d2) {
+  if (!(f > 0)) return 1;
+  return betaRegularized(d2 / 2, d1 / 2, d2 / (d2 + d1 * f));
+}
+
+/** Regularised incomplete beta I_x(a, b), continued fraction (Numerical Recipes 6.4). */
+function betaRegularized(a, b, x) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  if (x > (a + 1) / (a + b + 2)) return 1 - betaRegularized(b, a, 1 - x);
+  const front = Math.exp(lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  const TINY = 1e-300;
+  let c = 1, d = 1 - ((a + b) * x) / (a + 1);
+  if (Math.abs(d) < TINY) d = TINY;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= 500; m++) {
+    for (const num of [(m * (b - m) * x) / ((a + 2 * m - 1) * (a + 2 * m)), (-(a + m) * (a + b + m) * x) / ((a + 2 * m) * (a + 2 * m + 1))]) {
+      d = 1 + num * d; if (Math.abs(d) < TINY) d = TINY;
+      c = 1 + num / c; if (Math.abs(c) < TINY) c = TINY;
+      d = 1 / d;
+      h *= d * c;
+    }
+    if (Math.abs(d * c - 1) < 1e-15) break;
+  }
+  return (front * h) / a;
+}
+
+/** ln Gamma(z) for z > 0 (Lanczos, g = 7). */
+function lnGamma(z) {
+  const C = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnGamma(1 - z);
+  z -= 1;
+  let s = C[0];
+  for (let i = 1; i < 9; i++) s += C[i] / (z + i);
+  const t = z + 7.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(s);
+}
+
 // ---------------------------------------------------------------- helpers
 
 export function median(a) { return quantile(a, 0.5); }
@@ -655,13 +882,7 @@ export function quantile(a, q) {
   return s[lo] + (s[hi] - s[lo]) * (pos - lo);
 }
 
-function pearson(a, b) {
-  const ma = mean(a), mb = mean(b);
-  let sab = 0, saa = 0, sbb = 0;
-  for (let i = 0; i < a.length; i++) { sab += (a[i] - ma) * (b[i] - mb); saa += (a[i] - ma) ** 2; sbb += (b[i] - mb) ** 2; }
-  return saa > 0 && sbb > 0 ? sab / Math.sqrt(saa * sbb) : 0;
-}
-
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
 const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
 const angDist = (a, b) => { const d = Math.abs(wrap360(a) - wrap360(b)); return d > 180 ? 360 - d : d; };
 
