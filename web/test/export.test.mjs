@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  encodeProfile, decodeProfile, profileJson, profileHeader, rawAccelSettings,
+  encodeProfile, decodeProfile, profileJson, profileHeader, rawAccelSettings, rawAccelFit,
   smoothingForDpi, profileFromGains, headlineGains, headlineText,
 } from '../js/export.js';
 import { defaultConfig, configGains, sanitizeConfig, FLAG_ENABLED, FLAG_LINEAR, FLAG_CHORD_TOGGLE } from '../js/omni-core.js';
@@ -78,14 +78,26 @@ test('headline values and text', () => {
   assert.match(text, /Up-left\t135\t1\.060/);
 });
 
-test('Raw Accel export uses the axis gains as output DPI and ratios', () => {
+test('Raw Accel export writes the least-squares fit as output DPI and ratios', () => {
   const cfg = profileFromGains(PV8);
+  const f = rawAccelFit(cfg);
   const s = JSON.parse(rawAccelSettings(cfg));
   const p = s.profiles[0];
-  near(p['Output DPI'], 1000 * PV8[0], 0.5);
-  near(p['L/R output DPI ratio (left sens multiplier)'], PV8[4] / PV8[0], 1e-3);
-  near(p['Y/X output DPI ratio (vertical sens multiplier)'], PV8[6] / PV8[0], 1e-3);
-  near(p['U/D output DPI ratio (up sens multiplier)'], PV8[2] / PV8[6], 1e-3);
+  near(p['Output DPI'], 1000 * f.right, 0.5);
+  near(p['L/R output DPI ratio (left sens multiplier)'], f.left / f.right, 1e-3);
+  near(p['Y/X output DPI ratio (vertical sens multiplier)'], f.down / f.right, 1e-3);
+  near(p['U/D output DPI ratio (up sens multiplier)'], f.up / f.down, 1e-3);
+  // The fit stays close to the profile at the axes and keeps the geometric mean.
+  near(f.right, PV8[0], 0.03);
+  near(f.left, PV8[4], 0.03);
+  assert.ok(f.maxErrorPct < 5 && f.maxSkewDeg < 10, JSON.stringify(f));
+});
+
+test('Raw Accel fit is exact for a flat profile and for pure axis scaling', () => {
+  const flat = rawAccelFit(profileFromGains([1, 1, 1, 1, 1, 1, 1, 1]));
+  for (const k of ['right', 'left', 'up', 'down']) near(flat[k], 1, 1e-9);
+  near(flat.maxErrorPct, 0, 1e-9);
+  near(flat.maxSkewDeg, 0, 1e-9);
 });
 
 test('C header lists the Q12 gains', () => {
