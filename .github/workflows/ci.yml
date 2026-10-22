@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Web tests
+        run: node --test "web/test/*.test.mjs"
+
+      - name: Shared C/JS vectors are up to date
+        run: |
+          node web/test/gen-vectors.mjs > /tmp/vectors.inc
+          diff -u firmware/test/vectors.inc /tmp/vectors.inc
+
+      - name: Firmware host tests (ASan + UBSan)
+        run: make -C firmware/test run CC=gcc
+
+  firmware:
+    name: Firmware (${{ matrix.board }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - feather_rp2040_usb_host
+          - pico
+          - pico2
+          - waveshare_rp2350_usb_a
+          - waveshare_rp2040_pizero
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+            cmake ninja-build build-essential
+
+      - name: Cache dependencies
+        uses: actions/cache@v6
+        with:
+          path: firmware/deps
+          key: deps-${{ hashFiles('firmware/scripts/fetch-deps.sh') }}
+
+      - name: Fetch pinned dependencies
+        run: firmware/scripts/fetch-deps.sh
+
+      - name: Build
+        run: |
+          cmake -S firmware -B build -G Ninja -DOMNI_BOARD=${{ matrix.board }} -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          mkdir -p dist
+          cp build/omnisens-${{ matrix.board }}.uf2 dist/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: omnisens-${{ matrix.board }}
+          path: dist/*.uf2
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, firmware]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*.uf2
+          generate_release_notes: true

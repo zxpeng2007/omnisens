@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>omnisens - directional sensitivity calibration</title>
+  <meta name="description" content="Find your per-direction mouse sensitivity (PureVector-style) for any mouse, then send it to the omnisens USB adapter or export it.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0e13">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%232ee6c8' stroke-width='3'/%3E%3Cpath d='M16 3v26M3 16h26' stroke='%232ee6c8' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23ffb547'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" id="skip-link">Skip to content</a>
+
+  <header class="topbar">
+    <a class="brand" href="#/calibrate" aria-label="omnisens home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" /><path d="M16 4v24M4 16h24" /><circle class="dot" cx="16" cy="16" r="3.5" /></svg>
+      <span>omni<b>sens</b></span>
+    </a>
+    <nav class="mainnav" aria-label="Main">
+      <a href="#/calibrate" data-route="calibrate">Calibrate</a>
+      <a href="#/results" data-route="results">Results</a>
+      <a href="#/device" data-route="device">Adapter</a>
+      <a href="#/export" data-route="export">Export</a>
+      <a href="#/verify" data-route="verify">Verify</a>
+      <a href="#/about" data-route="about">About</a>
+    </nav>
+    <a class="device-pill" id="device-pill" href="#/device"><span class="led" aria-hidden="true"></span><span id="device-pill-text">No adapter</span></a>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <noscript><p class="card notice">omnisens needs JavaScript (ES modules) to run.</p></noscript>
+
+    <!-- ============================================================ calibrate -->
+    <section class="view" id="view-calibrate" data-view="calibrate" aria-labelledby="cal-h" hidden>
+      <div class="hero">
+        <p class="eyebrow">Open source &middot; any mouse &middot; you see the numbers</p>
+        <h1 id="cal-h" tabindex="-1">Directional sensitivity, calibrated to <em>your</em> aim</h1>
+        <p class="lead">Flick at targets for a few minutes. omnisens measures how far your first flick over- or undershoots in each direction and turns that into 8 directional sensitivity multipliers, the same idea as Corsair's PureVector, for any mouse.</p>
+        <ol class="steps">
+          <li><span class="step-n" aria-hidden="true">1</span><div><b>Set your sensitivity</b><span>So targets move exactly like in your game.</span></div></li>
+          <li><span class="step-n" aria-hidden="true">2</span><div><b>Flick for about 6 minutes</b><span>Centre, target, centre. Hit each target in one motion.</span></div></li>
+          <li><span class="step-n" aria-hidden="true">3</span><div><b>Get your 8 directional values</b><span>Send them to the adapter, copy them or export them.</span></div></li>
+        </ol>
+        <div class="cta-row">
+          <button class="btn primary big" id="cal-cta" type="button">Start calibration</button>
+          <button class="btn ghost" id="cal-demo" type="button">See an example result</button>
+        </div>
+      </div>
+
+      <form id="cal-form" class="card setup" novalidate aria-labelledby="setup-h">
+        <h2 id="setup-h" class="sr-only">Calibration setup</h2>
+        <fieldset class="block">
+          <legend><span class="legend-n">1</span>Your sensitivity</legend>
+          <div class="grid-fields">
+            <label class="field"><span>Game</span><select id="f-game"></select></label>
+            <label class="field" id="w-sens"><span id="f-sens-label">In-game sensitivity</span><input id="f-sens" type="number" step="any" min="0" inputmode="decimal"></label>
+            <label class="field" id="w-yaw" hidden><span>Yaw (deg per count at sens 1)</span><input id="f-yaw" type="number" step="any" min="0" inputmode="decimal"></label>
+            <label class="field" id="w-r6" hidden><span>MouseSensitivityMultiplierUnit</span><input id="f-r6" type="number" step="any" min="0" inputmode="decimal"></label>
+            <label class="field" id="w-cm" hidden><span>cm/360</span><input id="f-cm" type="number" step="any" min="0" inputmode="decimal"></label>
+            <label class="field"><span>Mouse DPI (CPI)</span><input id="f-dpi" type="number" step="1" min="50" max="64000" inputmode="numeric"></label>
+            <label class="field"><span>Horizontal FOV (degrees)</span><input id="f-fov" type="number" step="any" min="40" max="170" inputmode="decimal"></label>
+          </div>
+          <p class="calc" id="f-calc" aria-live="polite"></p>
+          <p class="note" id="f-note"></p>
+        </fieldset>
+
+        <fieldset class="block">
+          <legend><span class="legend-n">2</span>Session length</legend>
+          <div class="seg" role="radiogroup" aria-label="Session length">
+            <label class="seg-opt"><input type="radio" name="preset" value="quick"><span><b>Quick</b><small>warm-up + 3 rounds, about 4 min</small></span></label>
+            <label class="seg-opt"><input type="radio" name="preset" value="standard"><span><b>Standard</b><small>warm-up + 6 rounds, about 7-8 min</small></span></label>
+            <label class="seg-opt"><input type="radio" name="preset" value="custom"><span><b>Custom</b><small>2-10 rounds</small></span></label>
+          </div>
+          <label class="field inline" id="w-rounds" hidden><span>Rounds</span><input id="f-rounds" type="number" min="2" max="10" step="1" inputmode="numeric"></label>
+          <label class="check"><input type="checkbox" id="f-fullscreen"><span>Go fullscreen during the task</span></label>
+        </fieldset>
+
+        <fieldset class="block">
+          <legend><span class="legend-n">3</span>Adapter</legend>
+          <div id="cal-adapter"></div>
+        </fieldset>
+
+        <details class="tips">
+          <summary>Tips for a clean measurement</summary>
+          <ul>
+            <li>Use your normal grip, mousepad and DPI. Sit like you do in game.</li>
+            <li>Flick to each target in one motion, then correct and click. Do not slow down to be careful: the first flick is what gets measured.</li>
+            <li>Windows: turn off "Enhance pointer precision". Chrome or Edge give raw input; other browsers may add OS acceleration.</li>
+            <li>Press Esc any time to pause. Unfinished flicks are discarded, nothing else is lost.</li>
+          </ul>
+        </details>
+
+        <p class="error" id="cal-error" role="alert"></p>
+        <div class="cta-row">
+          <button class="btn primary big" type="submit" id="cal-start">Start calibration</button>
+          <label class="btn ghost file-btn">Load session (.json)<input type="file" id="cal-load" accept=".json,application/json"></label>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============================================================ results -->
+    <section class="view" id="view-results" data-view="results" aria-labelledby="res-h" hidden>
+      <div class="page-head">
+        <h1 id="res-h" tabindex="-1">Your directional profile</h1>
+        <p class="muted" id="res-meta"></p>
+      </div>
+
+      <div id="res-empty" class="card empty">
+        <p>No calibration yet. Run one, load a saved session, or look at an example from a simulated player.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="#/calibrate">Start calibration</a>
+          <label class="btn ghost file-btn">Load session (.json)<input type="file" id="res-load" accept=".json,application/json"></label>
+          <button class="btn ghost" type="button" id="res-demo">See an example</button>
+        </div>
+      </div>
+
+      <div id="res-body" hidden>
+        <div id="res-verdict" class="card verdict" aria-live="polite"></div>
+
+        <div class="card headline">
+          <div class="card-head">
+            <h2>Your PureVector-style values</h2>
+            <div class="btn-row">
+              <button class="btn small" type="button" id="res-copy-values">Copy values</button>
+              <button class="btn small" type="button" id="res-copy-code">Copy profile code</button>
+            </div>
+          </div>
+          <p class="muted small">Sensitivity multiplier for each direction your hand moves. Below 1.000x means that direction gets slower because you overshoot there; above means faster. The 90% range shows how sure the measurement is.</p>
+          <div class="table-wrap"><table class="values" id="res-table"></table></div>
+          <details class="more" id="res-points"><summary>All adapter points</summary><div class="table-wrap"></div></details>
+        </div>
+
+        <div class="card controls" aria-labelledby="ctl-h">
+          <h2 id="ctl-h">Tune the recommendation</h2>
+          <div class="controls-grid">
+            <label class="field range-field">
+              <span>Correction strength <output id="c-strength-out" for="c-strength"></output></span>
+              <input type="range" id="c-strength" min="0" max="100" step="5">
+              <small>70% is the default: correcting fully over-reacts to measurement noise.</small>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="c-symmetric">
+              <span><b>Tracking-safe (symmetric)</b><small>Same gain for opposite directions (left = right, up = down). Keeps tracking smooth when you reverse direction; only corrects axis-shaped bias.</small></span>
+            </label>
+            <div class="field">
+              <span id="c-res-label">Adapter resolution</span>
+              <div class="seg compact" role="radiogroup" aria-labelledby="c-res-label">
+                <label class="seg-opt"><input type="radio" name="c-res" value="8"><span><b>8 points</b></span></label>
+                <label class="seg-opt"><input type="radio" name="c-res" value="16"><span><b>16 points</b></span></label>
+              </div>
+            </div>
+            <label class="switch" id="w-force" hidden>
+              <input type="checkbox" id="c-force">
+              <span><b>Apply anyway</b><small>Use the measured pattern even though it did not pass the evidence test.</small></span>
+            </label>
+          </div>
+          <p class="muted small" id="c-status" aria-live="polite"></p>
+        </div>
+
+        <div class="charts">
+          <figure class="card chart">
+            <figcaption><h2>Your bias by direction</h2><p class="muted small">How far the first flick went compared with the target. Outside the dashed ring = overshoot, inside = undershoot. Rings are zoomed.</p></figcaption>
+            <div id="chart-bias" class="chart-box"></div>
+            <div id="legend-bias"></div>
+          </figure>
+          <figure class="card chart">
+            <figcaption><h2>Recommended sensitivity</h2><p class="muted small">Multiplier per direction, with the 90% range at the 8 main directions. Dashed grey = what you use now.</p></figcaption>
+            <div id="chart-rec" class="chart-box"></div>
+            <div id="legend-rec"></div>
+          </figure>
+        </div>
+
+        <div class="card actions" aria-labelledby="act-h">
+          <h2 id="act-h">Use it</h2>
+          <div class="btn-row wrap">
+            <button class="btn primary" type="button" id="act-send">Send to adapter</button>
+            <button class="btn" type="button" id="act-save" hidden>Save to adapter flash</button>
+            <button class="btn" type="button" id="act-json">Download JSON</button>
+            <button class="btn" type="button" id="act-rawaccel">Export for Raw Accel</button>
+            <a class="btn" href="#/export">More export options</a>
+            <a class="btn" href="#/verify">Verify with blind A/B</a>
+            <button class="btn ghost" type="button" id="act-session">Download session (.json)</button>
+          </div>
+          <p class="muted small" id="act-hint"></p>
+        </div>
+
+        <div class="card explain">
+          <h2>What the numbers mean</h2>
+          <p>Every flick has a fast first movement (the primary submovement) followed by small corrections. omnisens measures where that first movement ends compared with the target. If you consistently overshoot to the right and undershoot up-left, your hand treats those directions differently, and a slightly lower sensitivity to the right and a higher one up-left evens it out. That is what the multipliers do.</p>
+          <p>Your overall sensitivity stays the same: the multipliers average to 1.0. A general overshoot in every direction is a sensitivity choice, not a directional bias, so it is reported but never applied.</p>
+          <p>Only patterns that pass a statistical test (and are consistent between two halves of your data) are applied, and only partially (the strength slider), so a profile cannot be built from noise. Your hand also adapts to any sensitivity within a few hundred flicks, so expect the benefit to be small and check it honestly with the blind A/B test.</p>
+          <p><a href="https://github.com/zxpeng2007/omnisens/blob/main/docs/ALGORITHM.md" target="_blank" rel="noopener">How the measurement and fit work (ALGORITHM.md)</a></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ device -->
+    <section class="view" id="view-device" data-view="device" aria-labelledby="dev-h" hidden>
+      <div class="page-head">
+        <h1 id="dev-h" tabindex="-1">Adapter</h1>
+        <p class="muted">The omnisens adapter sits between your mouse and PC and applies the directional profile in hardware. Everything below talks to it over WebHID.</p>
+      </div>
+
+      <div id="dev-unsupported" class="card notice" hidden>
+        <h2>This browser cannot talk to USB devices</h2>
+        <p>Configuring the adapter needs WebHID, which is available in desktop Chrome, Edge and Opera. You can still calibrate and export your values here in any browser; open this page in one of those browsers to send them to the adapter.</p>
+      </div>
+
+      <div id="dev-disconnected" class="card" hidden>
+        <h2>Connect your adapter</h2>
+        <p>Plug the adapter into your PC and your mouse into the adapter, then pick <b>omnisens</b> in the browser's device list.</p>
+        <div class="cta-row"><button class="btn primary big" type="button" id="dev-connect">Connect adapter</button></div>
+        <p class="muted small">No adapter yet? The firmware runs on a Raspberry Pi Pico (RP2040) or similar board with a USB host port; see the README for parts and flashing.</p>
+      </div>
+
+      <div id="dev-connected" hidden>
+        <div class="dev-grid">
+          <div class="card">
+            <div class="card-head"><h2>Status</h2><button class="btn small ghost" type="button" id="dev-refresh">Refresh</button></div>
+            <dl class="kv" id="dev-status"></dl>
+            <div id="dev-warnings"></div>
+            <div class="btn-row wrap">
+              <button class="btn" type="button" id="dev-toggle">Disable correction</button>
+              <button class="btn ghost" type="button" id="dev-disconnect">Disconnect</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Live</h2><button class="btn small ghost" type="button" id="dev-reset-counters">Reset counters</button></div>
+            <div id="dev-live-chart" class="chart-box small"></div>
+            <dl class="kv compact" id="dev-live"></dl>
+            <p class="muted small">Move the mouse: the needle shows the direction the adapter detects and the gain it applies.</p>
+          </div>
+        </div>
+
+        <form class="card editor" id="dev-editor" novalidate aria-labelledby="ed-h">
+          <div class="card-head"><h2 id="ed-h">Profile editor</h2><span class="badge" id="ed-dirty" hidden>Edited, not applied</span></div>
+          <div class="editor-grid">
+            <div>
+              <div class="grid-fields">
+                <label class="field"><span>Directions (points)</span><input type="number" id="ed-n" min="1" max="16" step="1"></label>
+                <label class="field"><span>Interpolation</span><select id="ed-interp"><option value="cubic">Smooth (cubic)</option><option value="linear">Linear</option></select></label>
+                <label class="field"><span>Direction smoothing (counts)</span><input type="number" id="ed-smooth" min="0" max="4096" step="1"></label>
+                <label class="field"><span>New-stroke gap (ms)</span><input type="number" id="ed-reset" min="1" max="2000" step="1"></label>
+                <label class="field"><span>Rotation (degrees, CCW)</span><input type="number" id="ed-rot" min="-45" max="45" step="0.01"></label>
+                <label class="field"><span>Label (16 ASCII characters)</span><input type="text" id="ed-label" maxlength="16" pattern="[ -~]*" autocomplete="off"></label>
+              </div>
+              <div class="checks">
+                <label class="check"><input type="checkbox" id="ed-enabled"><span>Correction enabled</span></label>
+                <label class="check"><input type="checkbox" id="ed-chord"><span>Toggle with Left + Right + Middle held 3 s</span></label>
+              </div>
+              <h3>Gain per direction</h3>
+              <div id="ed-gains" class="gain-list"></div>
+            </div>
+            <div class="editor-preview">
+              <div id="ed-chart" class="chart-box"></div>
+              <p class="muted small">Preview of the edited profile. Gains are 0.50x to 2.00x.</p>
+            </div>
+          </div>
+          <div class="btn-row wrap">
+            <button class="btn primary" type="submit" id="ed-apply">Apply</button>
+            <button class="btn" type="button" id="ed-save">Save to flash</button>
+            <button class="btn" type="button" id="ed-revert">Revert to saved</button>
+            <button class="btn ghost" type="button" id="ed-copy">Copy profile code</button>
+            <button class="btn ghost" type="button" id="ed-import-toggle" aria-expanded="false" aria-controls="ed-import">Import profile code</button>
+          </div>
+          <div id="ed-import" class="import" hidden>
+            <label class="field"><span>Profile code (omni1...) or JSON</span><textarea id="ed-import-text" rows="3" spellcheck="false"></textarea></label>
+            <button class="btn" type="button" id="ed-import-go">Load into editor</button>
+          </div>
+          <p class="muted small">Apply changes the adapter right away (in RAM). Save to flash keeps them after unplugging.</p>
+        </form>
+
+        <div class="card">
+          <h2>Maintenance</h2>
+          <div class="btn-row wrap">
+            <button class="btn" type="button" id="dev-defaults">Factory defaults</button>
+            <button class="btn danger" type="button" id="dev-bootloader">Enter bootloader (firmware update)</button>
+          </div>
+          <p class="muted small">Firmware update: after Enter bootloader a USB drive named <b>RPI-RP2</b> (RP2040) or <b>RP2350</b> appears. Drag the matching <code>.uf2</code> file from the GitHub Releases page onto it; the adapter restarts by itself and keeps your saved profile. Factory defaults load a flat profile into RAM; Save to flash makes it stick.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ export -->
+    <section class="view" id="view-export" data-view="export" aria-labelledby="exp-h" hidden>
+      <div class="page-head">
+        <h1 id="exp-h" tabindex="-1">Export</h1>
+        <p class="muted">Take your values anywhere: share a profile code, bake them into the firmware, or approximate them in Raw Accel on Windows without any hardware.</p>
+      </div>
+      <div class="card">
+        <h2 id="exp-src-h">Profile source</h2>
+        <div class="seg" role="radiogroup" aria-labelledby="exp-src-h" id="exp-sources">
+          <label class="seg-opt"><input type="radio" name="exp-src" value="result"><span><b>Latest calibration</b><small id="exp-src-result">none yet</small></span></label>
+          <label class="seg-opt"><input type="radio" name="exp-src" value="device"><span><b>Adapter</b><small id="exp-src-device">not connected</small></span></label>
+          <label class="seg-opt"><input type="radio" name="exp-src" value="paste"><span><b>Paste a code</b><small>omni1... or JSON</small></span></label>
+        </div>
+        <div id="exp-paste" hidden>
+          <label class="field"><span>Profile code or JSON</span><textarea id="exp-paste-text" rows="3" spellcheck="false"></textarea></label>
+          <button class="btn" type="button" id="exp-paste-go">Load</button>
+        </div>
+      </div>
+      <p class="card empty" id="exp-empty">Choose a source above. No calibration yet? <a href="#/calibrate">Run one</a> or paste a profile code.</p>
+      <div id="exp-body" hidden>
+        <div class="card">
+          <div class="card-head"><h2>The 8 values</h2><button class="btn small" type="button" id="exp-copy-values">Copy values</button></div>
+          <div class="table-wrap"><table class="values" id="exp-table"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Profile code</h2><button class="btn small" type="button" id="exp-copy-code">Copy</button></div>
+          <p class="muted small">One line that holds the whole profile. Paste it into the Adapter page (Import profile code) or share it.</p>
+          <pre class="code" id="exp-code"></pre>
+          <div class="btn-row"><button class="btn" type="button" id="exp-json">Download JSON</button></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Firmware default (C header)</h2><button class="btn small" type="button" id="exp-copy-header">Copy</button></div>
+          <p class="muted small">Builds the profile into the firmware as its factory default: save this as <code>firmware/src/profile_default.h</code> and rebuild (see firmware/README).</p>
+          <pre class="code" id="exp-header"></pre>
+        </div>
+        <div class="card">
+          <h2>Raw Accel (Windows, no hardware)</h2>
+          <p><a href="https://github.com/RawAccelOfficial/rawaccel" target="_blank" rel="noopener">Raw Accel</a> is a free Windows driver that can scale right, left, up and down separately. It cannot do true per-direction gains, so the 4 axis directions are matched exactly and the diagonals become a blend of their two axes (close for gentle profiles, and the diagonal's direction skews slightly).</p>
+          <ol class="howto">
+            <li>Back up your current <code>settings.json</code> next to <code>rawaccel.exe</code>. This file replaces it, including any acceleration you use.</li>
+            <li>Download the file below and put it next to <code>rawaccel.exe</code> as <code>settings.json</code>.</li>
+            <li>Open Raw Accel and press <b>Apply</b> (or run <code>writer.exe settings.json</code>).</li>
+          </ol>
+          <div class="btn-row"><button class="btn primary" type="button" id="exp-rawaccel">Download Raw Accel settings.json</button></div>
+          <p class="muted small" id="exp-rawaccel-note"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ verify -->
+    <section class="view" id="view-verify" data-view="verify" aria-labelledby="ver-h" hidden>
+      <div class="page-head">
+        <h1 id="ver-h" tabindex="-1">Blind A/B check</h1>
+        <p class="muted">Does the profile actually help you, or does it just feel different? Six short blocks of flicks, half with the profile on and half off, in an order you are not told. The numbers decide.</p>
+      </div>
+      <div class="card" id="ver-setup"></div>
+      <div class="card" id="ver-guess" hidden></div>
+      <div class="card" id="ver-result" hidden></div>
+    </section>
+
+    <!-- ============================================================ about -->
+    <section class="view prose" id="view-about" data-view="about" aria-labelledby="about-h" hidden>
+      <div class="page-head">
+        <h1 id="about-h" tabindex="-1">About omnisens</h1>
+        <p class="muted">Open-source directional sensitivity for any mouse. MIT licensed.</p>
+      </div>
+      <div class="card">
+        <h2>What it is</h2>
+        <p>Corsair's PureVector (on the Sabre v3 Pro) calibrates your aim in Aimlabs, finds where you over- or undershoot by direction, and stores a per-direction sensitivity profile in the mouse. omnisens does the same thing for any mouse:</p>
+        <ul>
+          <li><b>This page</b> runs the calibration (a SpiderShot-style flick task), fits the profile and shows you every number.</li>
+          <li><b>A small USB adapter</b> (Raspberry Pi Pico or similar, about the price of a mousepad) sits between mouse and PC and scales each movement by the gain for its direction. No drivers, no software running in the background, works in every game.</li>
+          <li><b>No adapter?</b> Export the values to Raw Accel on Windows for an axis-based approximation, or just keep the numbers.</li>
+        </ul>
+        <p>One reviewer put PureVector as <q>like having a separate X and Y sensitivity but for more directions</q> (<a href="https://www.youtube.com/shorts/6OZWJPcAX6A" target="_blank" rel="noopener">DiamondLobby Reviews</a>). The same video asks whether a profile calibrated on flicks hurts tracking. omnisens answers that with a tracking-safe symmetric mode, partial correction, a statistical evidence gate, and the blind A/B test.</p>
+      </div>
+      <div class="card">
+        <h2>How it differs from PureVector</h2>
+        <ul>
+          <li>Open: the firmware, the analysis and this page are on GitHub, and the profile format is documented.</li>
+          <li>Any mouse: the adapter works with any USB mouse, wired or with a USB receiver.</li>
+          <li>Transparent: you see the measured bias, the uncertainty and the exact multipliers, and you can edit them.</li>
+          <li>Honest: no profile is applied unless the data show a real pattern, and the A/B test checks whether it helps.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>Limits</h2>
+        <ul>
+          <li>The adapter forwards up to 1000 Hz. Mice set to 2000-8000 Hz are reduced to 1000 Hz through it.</li>
+          <li>The calibration measures flicks. Tracking uses different motor control; if you mostly track, use tracking-safe mode and a lower strength.</li>
+          <li>Your hand adapts to any sensitivity change. Expect a few hundred flicks before a new profile settles, and recalibrate after changing grip, mousepad, DPI or posture.</li>
+          <li>Measurement noise is real. Short sessions give wide uncertainty ranges; Standard (6 rounds) or more is recommended.</li>
+        </ul>
+      </div>
+      <div class="card notice">
+        <h2>Fair play</h2>
+        <p>The adapter is a separate USB device that changes your mouse input. LAN tournaments generally forbid such devices (for example Riot's VCT global competition policy, rule 2.3.3, and the ESL rulebook, section 4.1), and online anti-cheat cannot tell it apart from other input-modifying adapters. Check the rules before using it in competition. Raw Accel is a separate driver with its own rules.</p>
+        <p>omnisens is an independent project, not affiliated with or endorsed by Corsair or Aimlabs. PureVector is a trademark of Corsair.</p>
+      </div>
+      <div class="card">
+        <h2>Privacy</h2>
+        <p>Everything runs in your browser. No data leaves your computer; settings are kept in this browser's local storage and sessions are only saved when you download them.</p>
+        <p><a href="https://github.com/zxpeng2007/omnisens" target="_blank" rel="noopener">Source code on GitHub</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>omnisens &middot; MIT &middot; <a href="https://github.com/zxpeng2007/omnisens" target="_blank" rel="noopener">GitHub</a> &middot; not affiliated with Corsair or Aimlabs</p>
+  </footer>
+
+  <!-- ============================================================ task screen -->
+  <div id="task" class="task" hidden>
+    <canvas id="task-canvas" aria-label="Flick task. Click the orange centre target, then flick to each teal target and click it."></canvas>
+    <div class="task-hud" aria-hidden="true">
+      <span id="hud-label" class="hud-label"></span>
+      <div class="hud-bar"><div id="hud-fill" class="hud-fill"></div></div>
+      <span id="hud-count" class="hud-count"></span>
+    </div>
+    <div id="hud-warn" class="hud-warn" role="status" hidden></div>
+    <div id="task-overlay" class="task-overlay" hidden>
+      <div class="task-card" role="dialog" aria-modal="true" aria-labelledby="ov-title" aria-describedby="ov-body">
+        <h2 id="ov-title"></h2>
+        <div id="ov-body"></div>
+        <p id="ov-error" class="error" role="alert"></p>
+        <div class="cta-row">
+          <button id="ov-go" class="btn primary big" type="button">Click to start</button>
+          <button id="ov-quit" class="btn ghost" type="button">Quit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

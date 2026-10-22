@@ -1,0 +1,17 @@
+# firmware build output
+firmware/build*/
+firmware/test/test_core
+*.uf2
+*.elf
+*.bin
+*.hex
+*.map
+*.dis
+
+# local tooling
+node_modules/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+firmware/deps/
