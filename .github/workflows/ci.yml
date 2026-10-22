@@ -84,12 +84,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v3
+      # Third-party action with write access: pinned to the v3.0.3 commit.
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
-          files: dist/*.uf2
+          # Pre-releases until the firmware has been tested on hardware.
+          prerelease: true
           generate_release_notes: true
+          files: |
+            dist/*.uf2
+            LICENSE
+            THIRD_PARTY_NOTICES.md

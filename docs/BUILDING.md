@@ -49,9 +49,11 @@ Optional build settings:
 ### Adding a board
 
 Create `firmware/boards/<name>.cmake` (sets `PICO_BOARD`) and
-`firmware/boards/omni_board_<name>.h` (pins: PIO-USB D+, optional VBUS
-enable, LED or WS2812), then add the board to the matrix in
-`.github/workflows/ci.yml`. D- must be the GPIO right after D+.
+`firmware/boards/omni_board_<name>.h`: copy an existing header and define
+every macro in it, using `(-1)` for pins the board lacks (an undefined pin
+macro would silently become GPIO0) and a unique `OMNI_BOARD_ID`. Then add
+the board to the matrix in `.github/workflows/ci.yml`. D- must be the GPIO
+right after D+.
 
 ### Code map
 
@@ -88,4 +90,5 @@ python -m http.server 8000 --directory web
 ```
 
 then open http://localhost:8000/. Pushing to `main` deploys it to GitHub
-Pages through `.github/workflows/pages.yml`.
+Pages through `.github/workflows/pages.yml` (in a fork, first set Settings →
+Pages → Source to "GitHub Actions").

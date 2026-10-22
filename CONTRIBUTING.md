@@ -3,7 +3,7 @@
 Bug reports, mouse compatibility reports and pull requests are welcome.
 
 * **A mouse does not work through the adapter?** Open an issue with the mouse
-  model, the board, what the status LED does, and (if the Device page of the
+  model, the board, what the status LED does, and (if the Adapter page of the
   calibration tool can connect) the status it shows.
 * **Calibration results look wrong?** Download the session from the results
   page (`Download session`) and attach it; it contains only your flick

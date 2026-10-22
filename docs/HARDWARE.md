@@ -17,7 +17,7 @@ settings in its own flash.
 
 | Board | Approx. price | Effort | Firmware file |
 |---|---|---|---|
-| [Adafruit Feather RP2040 with USB Type A Host](https://www.adafruit.com/product/5723) | $17.50 | none, plug and play | `omnisens-feather_rp2040_usb_host.uf2` |
+| [Adafruit Feather RP2040 with USB Type A Host](https://www.adafruit.com/product/5723) | $17.50 | none, no wiring | `omnisens-feather_rp2040_usb_host.uf2` |
 | [Raspberry Pi Pico](https://www.raspberrypi.com/products/raspberry-pi-pico/) + USB-A socket | $4 + socket | four wires | `omnisens-pico.uf2` |
 | [Raspberry Pi Pico 2](https://www.raspberrypi.com/products/raspberry-pi-pico-2/) + USB-A socket | $5 + socket | four wires, maybe two resistors | `omnisens-pico2.uf2` |
 | [Waveshare RP2350-USB-A](https://www.waveshare.com/wiki/RP2350-USB-A) | $5 | remove one resistor | `omnisens-waveshare_rp2350_usb_a.uf2` |
@@ -74,19 +74,25 @@ no fuse, so avoid power-hungry devices.
 
 The PIO-USB port is the second USB-C connector (D+ GPIO6, D- GPIO7). Use a
 USB-C (male) to USB-A (female) OTG adapter for the mouse. Remove the 2.2 kΩ
-D+ pull-up **R34** for host mode, as with R13 above. There is no user LED.
+D+ pull-up **R34** for host mode, as with R13 above (from the schematic and a
+user report, not from Waveshare's wiki: check the schematic first). There is
+no user LED.
 
 ## Flashing and updating
 
 1. Download the `.uf2` for your board from the
-   [latest release](https://github.com/zxpeng2007/omnisens/releases/latest).
+   [releases page](https://github.com/zxpeng2007/omnisens/releases), or,
+   until the first release is out, from the Artifacts of the latest
+   successful [CI run](https://github.com/zxpeng2007/omnisens/actions/workflows/ci.yml)
+   (GitHub sign-in needed).
 2. Put the board in bootloader mode: hold **BOOT/BOOTSEL** while plugging it
    into the PC (Feather and Waveshare: hold BOOT and tap RESET). A drive
    called `RPI-RP2` (RP2040) or `RP2350` appears.
 3. Drag the `.uf2` onto that drive. The board reboots into omnisens.
 
-Later updates work the same way, or use **Enter bootloader** on the Device
-page of the calibration tool. Your saved profile survives firmware updates.
+Later updates work the same way, or use **Enter bootloader** on the Adapter
+page of the calibration tool. Your saved profile is stored outside the
+firmware image, so updates are designed to keep it.
 
 ## Status LED
 
@@ -112,9 +118,9 @@ without software (it does not change the saved setting).
   a few devices misbehave on it. If yours does not enumerate, try a short
   cable or a small hub between the adapter and the mouse, and open an issue
   with the mouse model.
-* **Power.** The mouse is powered by the PC through the adapter. Very
-  power-hungry RGB mice may need the Feather (fused boost converter) or a
-  powered hub.
+* **Power.** The mouse is powered by the PC through the adapter (the
+  Feather's USB-A port is limited by a 500 mA fuse). Very power-hungry RGB
+  mice may need a powered hub between the adapter and the mouse.
 * **Sleep.** While the PC sleeps the status LED turns off. If the PC allows
   the mouse to wake it, the adapter and mouse stay powered so a click can
   wake it; this means a lit RGB mouse stays lit. On the Feather, if waking is

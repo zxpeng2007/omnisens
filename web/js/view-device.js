@@ -76,7 +76,7 @@ export function init(c) {
   });
   $('#dev-defaults').addEventListener('click', () => {
     // eslint-disable-next-line no-alert
-    if (!window.confirm('Load factory defaults (flat profile) into the adapter? Save to flash afterwards to make it stick.')) return;
+    if (!window.confirm('Load factory defaults (a flat profile in official builds) into the adapter? Save to flash afterwards to make it stick.')) return;
     attempt('Loading defaults', async () => {
       await ctx.withDevice((d) => d.loadDefaults());
       editDirty = false;

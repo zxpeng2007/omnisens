@@ -83,7 +83,8 @@ untouched, so it is a transparent passthrough.
 ### Consequences worth knowing
 
 * **Asymmetric gains are the point.** If you overshoot right by 8%, the right
-  gain drops by about 7%. The side effect: moving right 10 cm and then left
+  gain drops by about 5% at the default 70% strength (about 7% at full
+  strength). The side effect: moving right 10 cm and then left
   10 cm no longer returns the view to exactly where it started. Any scheme
   with different left and right sensitivities has this property; your hand
   compensates the way it does for any sensitivity. If that bothers you, use
@@ -93,14 +94,14 @@ untouched, so it is a transparent passthrough.
   kept, not removed.
 * **Tracking.** Direction smoothing keeps the gain steady during smooth
   tracking, and a reversal only uses the old direction's gain for the first
-  ~L counts. By default the tool changes each gain by at most ±15% per
-  calibration.
+  ~L counts. By default the tool changes each gain by at most roughly ±15%
+  per calibration (a cap of 0.15 on the log gain: −14% to +16%).
 * **DPI.** Gains are ratios, so they hold at any DPI. Only `smoothing_counts`
   is in counts; the tool sets it from your DPI.
 * **Polling rate.** The adapter is a full-speed USB device and host, so it
   forwards at most 1000 reports per second. An 8 kHz mouse still works, at
-  1 kHz. Added latency is roughly one USB frame (up to 1 ms) on top of the
-  mouse's own.
+  1 kHz. Added latency is expected to be about one USB frame (up to 1 ms) on
+  top of the mouse's own; it has not been measured yet.
 
 ## 2. The calibration
 
@@ -134,8 +135,9 @@ directional bias.
   with distance (diameter = distance / 7), which keeps difficulty constant so
   target size does not masquerade as a distance effect. Flicks back to the
   centre count too, with their own offset term in the model.
-* **Length.** One warm-up round (discarded) plus 6 rounds by default, about
-  as long as PureVector's five one-minute rounds plus some margin.
+* **Length.** A 24-target warm-up (discarded) plus 5 rounds by default
+  (Standard; Quick is 3, Custom 2-10), roughly as long as PureVector's five
+  one-minute rounds.
 
 ### Measuring one flick
 
@@ -248,7 +250,8 @@ ln g_new(θ) = ln g_base(θ) + δ(θ)      δ = clamp(−λ · ĥ(θ) + s, ±0.1
 fresh calibration, your current profile for *Refine*), `ĥ` is the shrunk
 directional part of the fit and λ the strength (default 0.7). The shift `s`
 makes δ average zero over the table, so the table's geometric mean equals
-the base's and your overall sensitivity is unchanged. The ±15% cap limits
+the base's and your overall sensitivity is unchanged. The cap (0.15 on the
+log gain, roughly ±15%) limits
 the *change* in each calibration, never the base itself: a base you set to
 1.30x everywhere stays at a geometric mean of 1.30x. In tracking-safe mode
 only δ is symmetric (it has only cos 2θ and sin 2θ terms); the base is kept

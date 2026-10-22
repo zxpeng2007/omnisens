@@ -1,6 +1,13 @@
 # firmware build output
+/build*/
+/dist/
+/_site/
 firmware/build*/
+firmware/src/profile_default.h
 firmware/test/test_core
+firmware/test/test_hid
+firmware/test/test_store
+firmware/test/*.exe
 *.uf2
 *.elf
 *.bin

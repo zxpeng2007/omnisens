@@ -5,7 +5,8 @@
 #include <string.h>
 
 // Optional baked-in factory profile, exported by the web tool ("C header").
-#if defined(__has_include)
+// Host tests define OMNI_NO_PROFILE_DEFAULT so they always see the flat one.
+#if defined(__has_include) && !defined(OMNI_NO_PROFILE_DEFAULT)
 #if __has_include("profile_default.h")
 #include "profile_default.h"
 #endif

@@ -10,9 +10,11 @@ Everything here is the contract between `firmware/` and `web/js/device.js`.
 | 2 | Vendor config (usage page `0xFF00`, usage `0x01`) | IN 0x83 (unused) | Feature reports 1-3, 63 bytes each |
 
 USB IDs default to `0x1209:0x0001`, the [pid.codes](https://pid.codes/1209/0001/)
-test PID. It is not unique and is meant for testing; omnisens will switch to a
-dedicated PID once one is assigned. Builds can override the IDs with the
-`OMNI_USB_VID` / `OMNI_USB_PID` C defines (update `web/js/device.js` to match).
+test PID. It is not unique (another test device with the same IDs can show up
+in the tool's device picker) and pid.codes reserves it for testing, so
+omnisens will not publish release binaries until it has a dedicated PID; CI
+builds are for testing. Builds can override the IDs with the `OMNI_USB_VID` /
+`OMNI_USB_PID` C defines (update `web/js/device.js` to match).
 
 ## Interface 0: mouse
 

@@ -122,7 +122,7 @@
 
         <div class="card headline">
           <div class="card-head">
-            <h2>Your PureVector-style values</h2>
+            <h2>Your directional values</h2>
             <div class="btn-row">
               <button class="btn small" type="button" id="res-copy-values">Copy values</button>
               <button class="btn small" type="button" id="res-copy-code">Copy profile code</button>
@@ -190,7 +190,7 @@
         <div class="card explain">
           <h2>What the numbers mean</h2>
           <p>Every flick has a fast first movement (the primary submovement) followed by small corrections. omnisens measures where that first movement ends compared with the target. If you consistently overshoot to the right and undershoot up-left, your hand treats those directions differently, and a slightly lower sensitivity to the right and a higher one up-left evens it out. That is what the multipliers do.</p>
-          <p>Your overall sensitivity stays the same: the multipliers average to 1.0. A general overshoot in every direction is a sensitivity choice, not a directional bias, so it is reported but never applied.</p>
+          <p>Your overall sensitivity stays the same: the multipliers keep the same geometric mean as before (1.0 for a fresh calibration). A general overshoot in every direction is a sensitivity choice, not a directional bias, so it is reported but never applied.</p>
           <p>Only patterns that pass a statistical test (and are consistent between two halves of your data) are applied, and only partially (the strength slider), so a profile cannot be built from noise. Your hand also adapts to any sensitivity within a few hundred flicks, so expect the benefit to be small and check it honestly with the blind A/B test.</p>
           <p><a href="https://github.com/zxpeng2007/omnisens/blob/main/docs/ALGORITHM.md" target="_blank" rel="noopener">How the measurement and fit work (ALGORITHM.md)</a></p>
         </div>
@@ -279,7 +279,7 @@
             <button class="btn" type="button" id="dev-defaults">Factory defaults</button>
             <button class="btn danger" type="button" id="dev-bootloader">Enter bootloader (firmware update)</button>
           </div>
-          <p class="muted small">Firmware update: after Enter bootloader a USB drive named <b>RPI-RP2</b> (RP2040) or <b>RP2350</b> appears. Drag the matching <code>.uf2</code> file from the GitHub Releases page onto it; the adapter restarts by itself and keeps your saved profile. Factory defaults load a flat profile into RAM; Save to flash makes it stick.</p>
+          <p class="muted small">Firmware update: after Enter bootloader a USB drive named <b>RPI-RP2</b> (RP2040) or <b>RP2350</b> appears. Drag the matching <code>.uf2</code> file from the GitHub Releases page onto it; the adapter restarts by itself and keeps your saved profile. Factory defaults (a flat profile in official builds) load into RAM; Save to flash makes them stick.</p>
         </div>
       </div>
     </section>
@@ -366,7 +366,7 @@
           <li>Open: the firmware, the analysis and this page are on GitHub, and the profile format is documented.</li>
           <li>Any mouse: the adapter works with any USB mouse, wired or with a USB receiver.</li>
           <li>Transparent: you see the measured bias, the uncertainty and the exact multipliers, and you can edit them.</li>
-          <li>Honest: no profile is applied unless the data show a real pattern, and the A/B test checks whether it helps.</li>
+          <li>Conservative: no profile is applied unless the data show a real pattern, and the A/B test checks whether it helps.</li>
         </ul>
       </div>
       <div class="card">
@@ -380,7 +380,7 @@
       </div>
       <div class="card notice">
         <h2>Fair play</h2>
-        <p>The adapter is a separate USB device that changes your mouse input. LAN tournaments generally forbid such devices (for example Riot's VCT global competition policy, rule 2.3.3, and the ESL rulebook, section 4.1), and online anti-cheat cannot tell it apart from other input-modifying adapters. Check the rules before using it in competition. Raw Accel is a separate driver with its own rules.</p>
+        <p>The adapter is a separate USB device that changes your mouse input. Tournaments and leagues generally allow only approved equipment, so it is unlikely to be allowed there. It identifies itself on USB as an omnisens adapter and does not hide from anti-cheat, which may treat it like any other input-modifying device. Check the rules of each game and event before using it, including in online matchmaking. This is not legal advice. Raw Accel is a separate driver with its own rules.</p>
         <p>omnisens is an independent project, not affiliated with or endorsed by Corsair or Aimlabs. PureVector is a trademark of Corsair.</p>
       </div>
       <div class="card">

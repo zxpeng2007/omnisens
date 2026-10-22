@@ -106,7 +106,7 @@ function updateDerived() {
 
 function renderAdapter() {
   const box = $('#cal-adapter');
-  const rawNote = 'If an omnisens adapter is plugged in, connect it here or disable it (hold Left + Right + Middle for 3 s until the LED goes dark) so the measurement sees your raw hand movement.';
+  const rawNote = 'If an omnisens adapter is plugged in, connect it here or disable it (hold Left + Right + Middle for 3 s; the LED flashes three times, then turns off, or dim red on RGB boards; boards without an LED give no sign) so the measurement sees your raw hand movement.';
   if (!webHidSupported()) {
     box.replaceChildren(
       h('p', {}, 'No adapter needed to find your values: you can copy them or export them to Raw Accel afterwards.'),
@@ -133,7 +133,7 @@ function renderAdapter() {
     h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Calibration mode' },
       opt('fresh', 'Fresh calibration', 'Bypass the adapter while measuring; build a new profile from your raw hand movement.'),
       opt('refine', 'Refine current profile', flat ? 'Your adapter profile is flat, so this is the same as fresh.' : 'Keep the current profile on and correct what is left over.')),
-    h('p', { class: 'muted small' }, 'The adapter is put back the way it was when the session ends, pauses, or the page closes.'),
+    h('p', { class: 'muted small' }, 'The adapter is put back the way it was when the session ends or pauses. If you close the page mid-session, unplug and replug the adapter to restore it.'),
   );
 }
 

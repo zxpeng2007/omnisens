@@ -1,5 +1,9 @@
 ;
-; WS2812 driver, from raspberrypi/pico-examples (BSD-3-Clause).
+; Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+; From raspberrypi/pico-examples pio/ws2812/ws2812.pio (single-pin program only).
 ;
 .program ws2812
 .side_set 1

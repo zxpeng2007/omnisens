@@ -836,7 +836,7 @@ export function fSurvival(f, d1, d2) {
   return betaRegularized(d2 / 2, d1 / 2, d2 / (d2 + d1 * f));
 }
 
-/** Regularised incomplete beta I_x(a, b), continued fraction (Numerical Recipes 6.4). */
+/** Regularised incomplete beta I_x(a, b), continued fraction evaluated with the modified Lentz method. */
 function betaRegularized(a, b, x) {
   if (x <= 0) return 0;
   if (x >= 1) return 1;

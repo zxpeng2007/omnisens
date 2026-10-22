@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyzeTrial, fitProfile, mulberry32, chi2SurvivalEven, fSurvival, lowpass } from '../js/analysis.js';
 import { gainAt } from '../js/omni-core.js';
+import { PRESETS } from '../js/schedule.js';
 
 const DEG_PER_COUNT = 0.022;  // CS2 at sensitivity 1
 
@@ -301,7 +302,7 @@ test('null calibration: the gate rarely passes without a bias and p is uniform (
 test('power: a standard session with the BIAS pattern passes the gate', (t) => {
   let passed = 0;
   for (let seed = 200; seed < 220; seed++) {
-    if (fitProfile(analyze(session(seed, { rounds: 6 })), { bootstrap: 0 }).evidence.passed) passed++;
+    if (fitProfile(analyze(session(seed, { rounds: PRESETS.standard })), { bootstrap: 0 }).evidence.passed) passed++;
   }
   t.diagnostic(`gate passed ${passed}/20`);
   assert.ok(passed >= 18, `passed ${passed}/20`);

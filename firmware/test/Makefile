@@ -1,7 +1,8 @@
 # Host-side unit tests for the SDK-independent parts of the firmware.
 #   make -C firmware/test run
 CC ?= cc
-CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-parameter -fsanitize=address,undefined -fno-omit-frame-pointer
+CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-parameter -fsanitize=address,undefined \
+          -fno-sanitize-recover=all -fno-omit-frame-pointer -DOMNI_NO_PROFILE_DEFAULT
 
 TESTS = test_core test_hid test_store
 

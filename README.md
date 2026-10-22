@@ -9,8 +9,15 @@ adapter correct it in hardware, in every game, with nothing running on your PC.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Calibration tool:** https://zxpeng2007.github.io/omnisens/ &nbsp;·&nbsp;
-**Firmware:** [releases](https://github.com/zxpeng2007/omnisens/releases/latest) &nbsp;·&nbsp;
+**Firmware:** [how to get it](#quick-start) &nbsp;·&nbsp;
 **Hardware:** [docs/HARDWARE.md](docs/HARDWARE.md)
+
+> **Status: early, not yet tested on real hardware.** The firmware builds in
+> CI and its core logic (direction engine, HID descriptor parser, flash
+> storage) is unit-tested, and the calibration maths is tested against
+> simulated players, but nobody has run the adapter with a real mouse yet.
+> Expect rough edges and please report what works and what does not (see
+> [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ---
 
@@ -38,7 +45,7 @@ USB mouse, wired or wireless:
                  to every report, in hardware
 ```
 
-1. **The firmware** (`firmware/`, about 85 KB) runs on a Raspberry Pi Pico or
+1. **The firmware** (`firmware/`, under 100 KB) runs on a Raspberry Pi Pico or
    a ready-made USB host board. It sits between the mouse and the PC, scales
    each motion report by a gain that depends on the direction you are moving,
    and forwards it. Out of the box it is a transparent passthrough.
@@ -54,9 +61,12 @@ USB mouse, wired or wireless:
    Cheapest: a Raspberry Pi Pico plus a USB-A socket (four wires). Options and
    wiring: [docs/HARDWARE.md](docs/HARDWARE.md).
 2. **Flash it.** Hold BOOTSEL while plugging it in, then drag the matching
-   `.uf2` from the [latest release](https://github.com/zxpeng2007/omnisens/releases/latest)
-   onto the drive that appears.
-3. **Plug in:** mouse → adapter → PC. It behaves like your normal mouse.
+   `omnisens-<board>.uf2` onto the drive that appears. Until the first
+   release is published, get the `.uf2` from the latest successful
+   [CI run](https://github.com/zxpeng2007/omnisens/actions/workflows/ci.yml)
+   (Artifacts section, GitHub sign-in needed) or build it
+   ([docs/BUILDING.md](docs/BUILDING.md)).
+3. **Plug in:** mouse → adapter → PC. It should behave like your normal mouse.
 4. **Calibrate.** Open the [calibration tool](https://zxpeng2007.github.io/omnisens/)
    in Chrome or Edge, enter your DPI, game and in-game sensitivity, connect
    the adapter, and flick for five to eight minutes.
@@ -86,9 +96,10 @@ mouse, for example:
 
 Here the player overshoots when flicking right, so right gets about 4% less
 sensitivity, and undershoots up-left, so that direction gets a bit more.
-Values are relative to your current sensitivity and the average stays at
-1.0, so your overall sensitivity does not change. The adapter interpolates
-smoothly between directions (16 points by default).
+Values are relative to your current sensitivity and their geometric mean
+stays at 1.0, so your overall sensitivity does not change. The adapter
+interpolates smoothly between directions (the tool sends 16 points by
+default; the firmware's flat factory profile has 8).
 
 ## How it works, briefly
 
@@ -104,12 +115,14 @@ smoothly between directions (16 points by default).
 * **Being careful.** The tool only applies a correction when the pattern is
   statistically clear *and* replicates across halves of your data. It applies
   70% of the measured correction by default, changes no direction by more
-  than ±15% per calibration, and never changes your average sensitivity. A
+  than roughly ±15% per calibration, and never changes your average
+  sensitivity. A
   *tracking-safe* mode only makes corrections that are equal in opposite
   directions, so strafe tracking stays consistent.
 * **Checking it.** *Refine* re-measures with the profile active.
-  *Blind A/B* alternates blocks with the correction on and off without telling
-  you which is which, then shows whether your flicks actually improved.
+  *Blind A/B* runs blocks with the correction on and off in a random,
+  balanced order without telling you which is which, then shows whether your
+  flicks actually improved.
 
 Details and references: [docs/ALGORITHM.md](docs/ALGORITHM.md). USB
 interfaces and the configuration protocol: [docs/PROTOCOL.md](docs/PROTOCOL.md).
@@ -123,10 +136,10 @@ Building: [docs/BUILDING.md](docs/BUILDING.md).
 | Where the profile lives | mouse firmware | adapter firmware |
 | Calibration | Aimlabs (Steam account) | browser, no account |
 | Directions | 8 (as shown in Corsair's graphs) | 8 values shown, up to 16 interpolated points |
-| Values visible and editable | no | yes |
+| Values visible and editable | shown as a graph; editing not documented | yes |
 | Polling rate | up to 8 kHz | up to 1 kHz through the adapter |
 | Cost | the mouse | about $4-18 for the adapter |
-| Algorithm | undisclosed ("patented") | open, documented, tested |
+| Algorithm | not published (Corsair describes it as patented) | open, documented, unit-tested (not yet validated with players) |
 
 omnisens is an independent project built from public motor-control research.
 It is not a reimplementation of PureVector, and nobody (including Corsair)
@@ -140,14 +153,19 @@ for you, read the game or add inputs: everything it sends is your own mouse
 movement and clicks, with the movement scaled by a fixed per-direction
 profile. Even so:
 
-* **LAN tournaments:** rules such as Riot's VCT ruleset (2.3.3: nothing but
-  approved equipment connected) and ESL's equipment approval will almost
-  certainly not allow an inline adapter.
-* **Online:** anti-cheat cannot tell it apart from other input-modifying
-  adapters at the USB level. No league or anti-cheat vendor has approved it.
+* **Tournaments and leagues:** competitive rulebooks (for example Riot's VCT
+  rules and ESL's rulebooks) generally allow only approved equipment, and an
+  inline input-modifying adapter is very unlikely to be approved. Ask the
+  organiser first.
+* **Online play:** the adapter identifies itself on USB as an "omnisens
+  adapter" with its own USB IDs. It does not hide from or impersonate
+  anything, and a game's anti-cheat may treat it like any other
+  input-modifying device. No game, league or anti-cheat vendor has approved
+  it.
 
-Use it for practice and casual play, or check the rules of your platform
-first. You are responsible for how you use it.
+Check the rules of each game, platform and event before using it, including
+in casual or ranked online matchmaking. You are responsible for how you use
+it. This section is not legal advice.
 
 ## Related projects
 
@@ -161,10 +179,11 @@ first. You are responsible for how you use it.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Third-party code: pico-sdk (BSD-3-Clause),
-TinyUSB (MIT), Pico-PIO-USB (MIT), `ws2812.pio` from pico-examples
-(BSD-3-Clause).
+MIT, see [LICENSE](LICENSE). The firmware links pico-sdk (BSD-3-Clause),
+TinyUSB (MIT) and Pico-PIO-USB (MIT), and `ws2812.pio` comes from
+pico-examples (BSD-3-Clause); their notices are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-PureVector, SABRE and CORSAIR are trademarks of CORSAIR; Aimlabs is a
-trademark of Statespace. omnisens is not affiliated with or endorsed by
-either.
+PureVector, SABRE and CORSAIR are trademarks of Corsair; Aimlabs is a
+trademark of its owner. All trademarks belong to their respective owners.
+omnisens is not affiliated with or endorsed by Corsair or Aimlabs.
