@@ -75,19 +75,95 @@ export function profileJson(cfgIn) {
   }, null, 2);
 }
 
+const RA_GRID = 72;  // fit grid, every 5 degrees
+
 /**
- * Raw Accel (Windows, no hardware) approximation. Raw Accel v1.7 can only scale
- * right/left/down/up separately per axis (plus an overall multiplier), so this
- * takes the profile's gains at 0/180/270/90 degrees. Diagonals become a blend of
- * the two axes and their direction skews slightly; it is an approximation.
- * Format from RawAccelOfficial/rawaccel v1.7.1 (wrapper/wrapper.cpp, common/rawaccel-base.hpp).
+ * Best Raw Accel approximation of a profile. Raw Accel v1.7 scales x by one
+ * factor when moving right and another when moving left, and y likewise for
+ * down/up, so a hand movement at angle t (c = cos t, s = sin t) comes out
+ * with gain sqrt(gx^2 c^2 + gy^2 s^2) and slightly bent. Fitting the squared
+ * gains is a linear least-squares problem in (R^2, L^2, U^2, D^2) over a dense
+ * angle grid; the result is then scaled so its geometric mean matches the
+ * profile's (overall sensitivity unchanged). The Go port in
+ * desktop/internal/omnicore/rawaccel_fit.go must stay identical.
  */
-export function rawAccelSettings(cfgIn) {
+export function rawAccelFit(cfgIn) {
   const cfg = sanitizeConfig(cfgIn);
   const gains = configGains(cfg);
   const linear = !!(cfg.flags & 2);
-  const g = (deg) => gainAt(gains, deg, linear);
-  const right = g(0), up = g(90), left = g(180), down = g(270);
+  const A = Array.from({ length: 4 }, () => new Array(4).fill(0));
+  const b = new Array(4).fill(0);
+  const grid = [];
+  for (let k = 0; k < RA_GRID; k++) {
+    const deg = (k * 360) / RA_GRID, t = (deg * Math.PI) / 180;
+    const c2 = Math.cos(t) ** 2, s2 = Math.sin(t) ** 2;
+    const target = gainAt(gains, deg, linear);
+    // Columns: R^2 (right), L^2 (left), U^2 (up), D^2 (down).
+    const row = deg < 90 ? [c2, 0, s2, 0] : deg < 180 ? [0, c2, s2, 0] : deg < 270 ? [0, c2, 0, s2] : [c2, 0, 0, s2];
+    for (let i = 0; i < 4; i++) {
+      b[i] += row[i] * target * target;
+      for (let j = 0; j < 4; j++) A[i][j] += row[i] * row[j];
+    }
+    grid.push({ deg, t, target });
+  }
+  const sq = solve4(A, b).map((v) => Math.sqrt(Math.max(v, 1e-4)));
+  const out = (f) => {
+    const [R, L, U, D] = f;
+    return grid.map(({ deg, t, target }) => {
+      const c = Math.cos(t), s = Math.sin(t);
+      const gx = c >= 0 ? R : L, gy = s >= 0 ? U : D;
+      return { deg, target, gain: Math.hypot(gx * c, gy * s), angle: Math.atan2(gy * s, gx * c) };
+    });
+  };
+  const first = out(sq);
+  const shift = Math.exp(first.reduce((a, p) => a + Math.log(p.target) - Math.log(p.gain), 0) / RA_GRID);
+  const [right, left, up, down] = sq.map((v) => v * shift);
+  const pts = out([right, left, up, down]);
+  const errs = pts.map((p) => 100 * (p.gain / p.target - 1));
+  let maxSkewDeg = 0;
+  for (const p of pts) {
+    let d = (p.angle * 180) / Math.PI - p.deg;
+    d = ((d + 540) % 360) - 180;
+    maxSkewDeg = Math.max(maxSkewDeg, Math.abs(d));
+  }
+  return {
+    right, left, up, down,
+    errors8: pts.filter((_, k) => k % (RA_GRID / 8) === 0).map((p) => 100 * (p.gain / p.target - 1)),
+    maxErrorPct: Math.max(...errs.map(Math.abs)),
+    rmsErrorPct: Math.sqrt(errs.reduce((a, e) => a + e * e, 0) / errs.length),
+    maxSkewDeg,
+  };
+}
+
+/** Gaussian elimination with partial pivoting for the 4x4 normal equations. */
+function solve4(A0, b0) {
+  const n = 4, M = A0.map((r, i) => [...r, b0[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = c + 1; r < n; r++) {
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = M[r][n];
+    for (let k = r + 1; k < n; k++) s -= M[r][k] * x[k];
+    x[r] = s / M[r][r];
+  }
+  return x;
+}
+
+/**
+ * Raw Accel (Windows, no hardware) settings.json for a fresh install, using
+ * rawAccelFit(). Format from RawAccelOfficial/rawaccel v1.7.1
+ * (wrapper/wrapper.cpp, common/rawaccel-base.hpp).
+ */
+export function rawAccelSettings(cfgIn) {
+  const cfg = sanitizeConfig(cfgIn);
+  const { right, left, up, down } = rawAccelFit(cfg);
   const noaccel = () => ({
     mode: 'noaccel', 'Gain / Velocity': true, inputOffset: 0.0, outputOffset: 0.0, acceleration: 0.005,
     decayRate: 0.1, gamma: 1.0, motivity: 1.5, exponentClassic: 2.0, scale: 1.0, exponentPower: 0.05,
